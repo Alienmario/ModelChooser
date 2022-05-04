@@ -56,7 +56,7 @@ methodmap SoundMap < StringMap
 			SoundPack soundPack; this.GetArray(key, soundPack, sizeof(SoundPack)); soundPack.Close();
 		}
 		delete snapshot;
-		this.Clear();
+		view_as<StringMap>(this).Clear();
 	}
 }
 
@@ -95,7 +95,7 @@ methodmap ModelList < ArrayList
 		{
 			PlayerModel model; this.GetArray(i, model); model.Close();
 		}
-		this.Clear();
+		view_as<ArrayList>(this).Clear();
 	}
 	
 	public int FindByName(const char[] modelName, PlayerModel model) {
