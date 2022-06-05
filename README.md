@@ -14,4 +14,4 @@ Type !models to enter. Press moveleft or moveright to browse. Press use or jump 
 
 ## Installation
 - Move the config file from corresponding configs folder to your Sourcemod's configs folder
-- Move the plugin to your Sourcemod's plugins folder
+- Move model_chooser_2020.smx (*or model_chooser_2020_preSM11.smx for SM versions lower than 11*) to your Sourcemod's plugins folder
