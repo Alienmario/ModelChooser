@@ -275,7 +275,9 @@ public void OnClientConnected(int client)
 
 public void OnClientPutInServer(int client)
 {
-	DHookEntity(DHook_SetModel, false, client);
+	if (!IsFakeClient(client)) {
+		DHookEntity(DHook_SetModel, false, client);
+	}
 }
 
 public void OnClientPostAdminCheck(int client)
