@@ -1,5 +1,6 @@
 #include <sourcemod>
 #include <sdktools>
+#include <sdkhooks>
 #include <dhooks>
 #include <smlib>
 #include <clientprefs>
@@ -144,6 +145,7 @@ Handle hudSynch;
 Handle DHook_SetModel;
 Cookie modelCookie;
 GlobalForward onModelChangedFwd;
+ConVar cvSelectionImmunity;
 
 //------------------------------------------------------
 // Natives
@@ -232,6 +234,8 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_model", Command_Model);
 	RegAdminCmd("sm_unlockmodel", Command_UnlockModel, ADMFLAG_KICK, "Unlock a locked model by name for a player");
 	RegAdminCmd("sm_lockmodel", Command_LockModel, ADMFLAG_KICK, "Re-lock a model by name for a player");
+	cvSelectionImmunity = CreateConVar("modelchooser_immunity", "0", "Whether players have damage immunity / are unable to fire when selecting models", _, true, 0.0, true, 1.0);
+	
 	HookEvent("player_hurt", Event_PlayerHurt, EventHookMode_Post);
 	CreateTimer(2.0, CheckHealthRaise, _, TIMER_REPEAT);
 	
@@ -550,6 +554,11 @@ void EnterModelChooser(int client)
 	Client_SetObserverMode(client, OBS_MODE_DEATHCAM, false);
 	Client_SetDrawViewModel(client, false);
 	SetEntityFlags(client, GetEntityFlags(client) | FL_ATCONTROLS);
+
+	if(cvSelectionImmunity.BoolValue) {
+		SDKHook(client, SDKHook_OnTakeDamage, BlockDamage);
+		SetEntPropFloat(client, Prop_Data, "m_flNextAttack", float(SIZE_OF_INT));
+	}
 	
 	OnMenuModelSelected(client);
 }
@@ -561,6 +570,8 @@ void ExitModelChooser(int client, bool silent = false)
 	Client_SetDrawViewModel(client, true);
 	SetEntityFlags(client, GetEntityFlags(client) & ~FL_ATCONTROLS);
 	ClearSyncHud(client, hudSynch);
+	SDKUnhook(client, SDKHook_OnTakeDamage, BlockDamage);
+	SetEntPropFloat(client, Prop_Data, "m_flNextAttack", GetGameTime());
 	
 	PlayerModel model;
 	GetSelectedModel(client, model, true);
@@ -649,6 +660,10 @@ void PlayRandomSound(int client, ArrayList soundList, int channel = SNDCHAN_AUTO
 			EmitSoundToClient(client, lastPlayedSound[client], _, channel);
 		}
 	}
+}
+
+public Action BlockDamage (int victim, int &attacker, int &inflictor, float &damage, int &damagetype) {
+	return Plugin_Handled;
 }
 
 //------------------------------------------------------
