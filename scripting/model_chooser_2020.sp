@@ -772,7 +772,7 @@ void ParseModels(KeyValues kv)
 				if(duplicityChecker.SetString(model.name, "", false))
 				{
 					modelList.PushArray(model);
-					PrecacheModel(model.path);
+					PrecacheModel(model.path, true);
 				} else {
 					SetFailState("Duplicate model name: %s", model.name);
 				}
@@ -833,7 +833,7 @@ ArrayList ParseFileItems(KeyValues kv, bool download = false, bool precacheSound
 			}
 			files.PushString(path);
 			if(precacheSounds) {
-				PrecacheSound(path);
+				PrecacheSound(path, true);
 			}
 			if(download) {
 				AddFileToDownloadsTable(path);
