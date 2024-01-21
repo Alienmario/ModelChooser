@@ -24,6 +24,7 @@ public void __pl_model_chooser_SetNTVOptional()
     MarkNativeAsOptional("ModelChooser_UnlockModel");
     MarkNativeAsOptional("ModelChooser_LockModel");
     MarkNativeAsOptional("ModelChooser_SelectModel");
+    MarkNativeAsOptional("ModelChooser_IsClientChoosing");
 }
 #endif
 
@@ -38,3 +39,5 @@ native bool ModelChooser_UnlockModel(int client, char[] modelName, bool select =
 native bool ModelChooser_LockModel(int client, char[] modelName);
 
 native bool ModelChooser_SelectModel(int client, char[] modelName);
+
+native bool ModelChooser_IsClientChoosing(int client);

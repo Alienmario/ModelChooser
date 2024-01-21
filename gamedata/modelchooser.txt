@@ -1,0 +1,110 @@
+"Games"
+{
+	"#default"
+	{
+		"Functions"
+		{
+			"CBaseEntity::SetModel_" // crashy name (><)
+			{
+				"offset"	"CBaseEntity::SetModel"
+				"hooktype"	"entity"
+				"return"	"void"
+				"this"		"entity"
+				"arguments"
+				{
+					"model"
+					{
+						"type"	"charptr"
+					}
+				}
+			}
+			"CBasePlayer::DeathSound"
+			{
+				"offset"	"CBasePlayer::DeathSound"
+				"hooktype"	"entity"
+				"return"	"void"
+				"this"		"entity"
+				"arguments"
+				{
+					"info"
+					{
+						"type"	"objectptr"
+						"flags" "byref"
+					}
+				}
+			}
+			"CBasePlayer::SetAnimation"
+			{
+				"offset"	"CBasePlayer::SetAnimation"
+				"hooktype"	"entity"
+				"return"	"void"
+				"this"		"entity"
+				"arguments"
+				{
+					"playerAnim"
+					{
+						"type"	"int"
+					}
+				}
+			}
+		}
+	}
+	"hl2mp"
+	{
+		"Offsets"
+		{
+			"CBaseEntity::SetModel" // CBaseEntity::SetModel(char const*)
+			{
+				"windows"	"24"
+				"linux"		"25"
+			}
+			"CBasePlayer::DeathSound" // CBasePlayer::DeathSound(CTakeDamageInfo const&)
+			{
+				"windows"	"362"
+				"linux"		"363"
+			}
+			"CBasePlayer::SetAnimation" // CBasePlayer::SetAnimation(PLAYER_ANIM)
+			{
+				"windows"	"365"
+				"linux"		"366"
+			}
+		}
+		"Signatures"
+		{
+			"CBaseAnimating::ResetSequence" // CBaseAnimating::ResetSequence(int nSequence)
+			{
+				"windows" "\x55\x8B\xEC\xA1\x2A\x2A\x2A\x2A\x53\x56\x57\x83\x78\x30\x00"
+				"linux" "@_ZN14CBaseAnimating13ResetSequenceEi"
+			}
+		}
+	}
+	"bms"
+	{
+		"Offsets"
+		{
+			"CBaseEntity::SetModel" // CBaseEntity::SetModel(char const*)
+			{
+				"windows"	"26"
+				"linux"		"27"
+			}
+			"CBasePlayer::DeathSound" // CBasePlayer::DeathSound(CTakeDamageInfo const&)
+			{
+				"windows"	"382"
+				"linux"		"383"
+			}
+			"CBasePlayer::SetAnimation" // CBasePlayer::SetAnimation(PLAYER_ANIM)
+			{
+				"windows"	"385"
+				"linux"		"386"
+			}
+		}
+		"Signatures"
+		{
+			"CBaseAnimating::ResetSequence" // CBaseAnimating::ResetSequence(int nSequence)
+			{
+				"windows" "\x55\x8B\xEC\xA1\x2A\x2A\x2A\x2A\x53\x56\x8B\xD9\xB9\x2A\x2A\x2A\x2A\x57\xFF\x50\x2C\x8B\x7D\x08"
+				"linux" "@_ZN14CBaseAnimating13ResetSequenceEi"
+			}
+		}
+	}
+}
