@@ -450,11 +450,12 @@ public void OnConfigsExecuted()
 	}
 	else
 	{
-		downloads.AddToDownloadsTable();
 		soundMap.Precache();
 		modelList.Precache();
 	}
 	
+	downloads.AddToDownloadsTable();
+
 	PrecacheModel(DEFAULT_MODEL, true);
 	#if defined OVERLAY_VMT
 	AddFileToDownloadsTable(OVERLAY_VMT);
