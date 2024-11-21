@@ -55,18 +55,18 @@
 		{
 			"CBaseEntity::SetModel" // CBaseEntity::SetModel(char const*)
 			{
-				"windows"	"24"
-				"linux"		"25"
+				"windows"	"26"
+				"linux"		"27"
 			}
 			"CBasePlayer::DeathSound" // CBasePlayer::DeathSound(CTakeDamageInfo const&)
 			{
-				"windows"	"362"
-				"linux"		"363"
+				"windows"	"368"
+				"linux"		"369"
 			}
 			"CBasePlayer::SetAnimation" // CBasePlayer::SetAnimation(PLAYER_ANIM)
 			{
-				"windows"	"365"
-				"linux"		"366"
+				"windows"	"371"
+				"linux"		"372"
 			}
 		}
 		"Signatures"
