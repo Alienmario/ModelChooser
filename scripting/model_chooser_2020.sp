@@ -11,7 +11,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION  "2.0"
+#define PLUGIN_VERSION  "2.1"
 
 public Plugin myinfo =
 {
@@ -180,6 +180,7 @@ enum struct PlayerModel
 	bool locked;
 	char name[MAX_MODELNAME];
 	char path[PLATFORM_MAX_PATH];
+	char vmBodyGroups[256];
 	int skinCount;
 	int adminBitFlags;
 	int defaultPrio;
@@ -336,7 +337,8 @@ public any Native_GetCurrentModelName(Handle plugin, int numParams)
 {
 	PlayerModel model;
 
-	if (GetSelectedModel(GetNativeCell(1), model)) {
+	if (GetSelectedModel(GetNativeCell(1), model))
+	{
 		SetNativeString(2, model.name, GetNativeCell(3));
 		return true;
 	}
@@ -347,7 +349,8 @@ public any Native_GetCurrentModelPath(Handle plugin, int numParams)
 {
 	PlayerModel model;
 
-	if (GetSelectedModel(GetNativeCell(1), model)) {
+	if (GetSelectedModel(GetNativeCell(1), model))
+	{
 		SetNativeString(2, model.path, GetNativeCell(3));
 		return true;
 	}
@@ -362,7 +365,8 @@ public any Native_UnlockModel(Handle plugin, int numParams)
 	int client = GetNativeCell(1);
 	
 	UnlockModel(client, modelName);
-	if (GetNativeCell(3)) {
+	if (GetNativeCell(3))
+	{
 		return SelectModelByName(client, modelName);
 	}
 	return true;
@@ -506,15 +510,21 @@ public void OnClientPutInServer(int client)
 
 public void OnClientPostAdminCheck(int client)
 {
-	if (!--clientInitChecks[client]) {
+	if (!--clientInitChecks[client])
 		InitClientModels(client);
-	}
 }
 
 public void OnClientCookiesCached(int client)
 {
-	if (!--clientInitChecks[client]) {
+	if (!--clientInitChecks[client])
 		InitClientModels(client);
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	if (StrContains(classname, "viewmodel") != -1 && HasEntProp(entity, Prop_Data, "m_hWeapon"))
+	{
+		DHookEntity(DHook_SetModel, false, entity, _, Hook_SetViewModelModel);
 	}
 }
 
@@ -616,7 +626,8 @@ public Action Command_LockModel(int client, int args)
 	String_ToUpper(arg2, arg2, sizeof(arg2));
 	
 	PlayerModel model;
-	if (modelList.FindByName(arg2, model) == -1) {
+	if (modelList.FindByName(arg2, model) == -1)
+	{
 		ReplyToCommand(client, "Model named %s doesn't exist!", arg2);
 		return Plugin_Handled;
 	}
@@ -642,23 +653,65 @@ public Action Command_LockModel(int client, int args)
 // Core functions
 //------------------------------------------------------
 
-public MRESReturn Hook_SetModel(int client, Handle hParams) {
+public MRESReturn Hook_SetModel(int client, DHookParam hParams)
+{
 	PlayerModel model;
-	if (GetSelectedModelAuto(client, model)) {
+	if (GetSelectedModelAuto(client, model))
+	{
 		DHookSetParamString(hParams, 1, model.path);
 		SetEntProp(client, Prop_Data, "m_nSkin", GetSelectedSkinAuto(client));
+		UpdateViewModels(client);
 		return MRES_ChangedHandled;
 	}
 	return MRES_Ignored;
 }
 
-void RefreshModel(int client) {
-	if (IsClientInGame(client)) {
+void RefreshModel(int client)
+{
+	if (IsClientInGame(client))
+	{
 		SetEntityModel(client, DEFAULT_MODEL);
 	}
 }
 
-void InitClientModels(int client) {
+public MRESReturn Hook_SetViewModelModel(int vm, DHookParam hParams)
+{
+	RequestFrame(UpdateViewModel, EntIndexToEntRef(vm));
+	return MRES_Ignored;
+}
+
+void UpdateViewModels(int client)
+{
+	int count = GetEntPropArraySize(client, Prop_Send, "m_hViewModel");
+	for (int i = 0; i < count; i++)
+	{
+		int vm = GetEntPropEnt(client, Prop_Send, "m_hViewModel", i);
+		if (vm != -1)
+		{
+			UpdateViewModel(vm);
+		}
+	}
+}
+
+void UpdateViewModel(int vm)
+{
+	vm = EntRefToEntIndex(vm);
+	if (vm != -1)
+	{
+		int client = GetEntPropEnt(vm, Prop_Data, "m_hOwner");
+		if (0 < client <= MaxClients)
+		{
+			PlayerModel playermodel;
+			if (GetSelectedModelAuto(client, playermodel))
+			{
+				ApplyEntityBodyGroupsFromString(vm, playermodel.vmBodyGroups);
+			}
+		}
+	}
+}
+
+void InitClientModels(int client)
+{
 	if (selectableModels[client] == null)
 	{
 		selectableModels[client] = BuildSelectableModels(client);
@@ -697,18 +750,22 @@ ArrayList BuildSelectableModels(int client)
 	return list;
 }
 
-bool GetSelectedModelAuto(int client, PlayerModel selectedModel) {
+bool GetSelectedModelAuto(int client, PlayerModel selectedModel)
+{
 	bool inMenu = (!selectedMenuIndexLocked[client] && selectedMenuIndex[client] != -1);
 	return GetSelectedModel(client, selectedModel, inMenu);
 }
 
-int GetSelectedSkinAuto(int client) {
+int GetSelectedSkinAuto(int client)
+{
 	bool inMenu = (!selectedMenuIndexLocked[client] && selectedMenuIndex[client] != -1);
 	return (inMenu? selectedMenuSkin[client] : selectedSkin[client]);
 }
 
-bool GetSelectedModel(int client, PlayerModel selectedModel, bool inMenu = false) {
-	if(selectableModels[client] != null && selectableModels[client].Length) {
+bool GetSelectedModel(int client, PlayerModel selectedModel, bool inMenu = false)
+{
+	if(selectableModels[client] != null && selectableModels[client].Length)
+	{
 		int index = selectableModels[client].Get(inMenu? selectedMenuIndex[client] : selectedIndex[client]);
 		modelList.GetArray(index, selectedModel);
 		return true;
@@ -720,9 +777,11 @@ bool SelectModelByName(int client, const char[] modelName, int skin = 0)
 {
 	PlayerModel model;
 	int index = modelList.FindByName(modelName, model);
-	if (index != -1) {
+	if (index != -1)
+	{
 		int clIndex = selectableModels[client].FindValue(index);
-		if (clIndex != -1 && !IsModelLocked(model, client)) {
+		if (clIndex != -1 && !IsModelLocked(model, client))
+		{
 			selectedIndex[client] = clIndex;
 			selectedSkin[client] = skin;
 			RefreshModel(client);
@@ -734,30 +793,34 @@ bool SelectModelByName(int client, const char[] modelName, int skin = 0)
 
 bool SelectModelByDefaultPrio(int client, char selectedName[MAX_MODELNAME] = "")
 {
-	if (!selectableModels[client].Length) {
+	if (!selectableModels[client].Length)
 		return false;
-	}
 	
 	// find models with the highest prio
 	// select random if there are multiple
 	int maxPrio = -1;
 	ArrayList maxPrioList = new ArrayList();
 	
-	for (int i = 0; i < selectableModels[client].Length; i++) {
+	for (int i = 0; i < selectableModels[client].Length; i++)
+	{
 		PlayerModel model; modelList.GetArray(selectableModels[client].Get(i), model);
-		if (IsModelLocked(model, client)) {
+		if (IsModelLocked(model, client))
 			continue;
-		}
-		if (model.defaultPrio > maxPrio) {
+		
+		if (model.defaultPrio > maxPrio)
+		{
 			maxPrio = model.defaultPrio;
 			maxPrioList.Clear();
 			maxPrioList.Push(i);
-		} else if (model.defaultPrio == maxPrio) {
+		}
+		else if (model.defaultPrio == maxPrio)
+		{
 			maxPrioList.Push(i);
 		}
 	}
 	
-	if (maxPrioList.Length) {
+	if (maxPrioList.Length)
+	{
 		selectedIndex[client] = maxPrioList.Get(Math_GetRandomInt(0, maxPrioList.Length - 1));
 		PlayerModel model;
 		modelList.GetArray(selectableModels[client].Get(selectedIndex[client]), model);
@@ -776,11 +839,13 @@ bool IsModelLocked(PlayerModel model, int client)
 	return (model.locked && !unlockedModels[client].GetValue(model.name, client));
 }
 
-void UnlockModel(int client, char modelName[MAX_MODELNAME]) {
+void UnlockModel(int client, char modelName[MAX_MODELNAME])
+{
 	unlockedModels[client].SetValue(modelName, true);
 }
 
-void LockModel(int client, char modelName[MAX_MODELNAME]) {
+void LockModel(int client, char modelName[MAX_MODELNAME])
+{
 	unlockedModels[client].Remove(modelName);
 }
 
@@ -790,22 +855,27 @@ void LockModel(int client, char modelName[MAX_MODELNAME]) {
 
 bool PreEnterCheck(int client)
 {
-	if (!client) {
+	if (!client)
+	{
 		return false;
 	}
-	if (selectableModels[client] == null || !selectableModels[client].Length) {
+	if (selectableModels[client] == null || !selectableModels[client].Length)
+	{
 		PrintToChat(client, "[ModelChooser] No models are available.");
 		return false;
 	}
-	if (!IsPlayerAlive(client)) {
+	if (!IsPlayerAlive(client))
+	{
 		PrintToChat(client, "[ModelChooser] You need to be alive to use models.");
 		return false;
 	}
-	if (selectedMenuIndex[client] != -1) {
+	if (selectedMenuIndex[client] != -1)
+	{
 		PrintToChat(client, "[ModelChooser] You are already changing models, dummy :]");
 		return false;
 	}
-	if (GetEntityFlags(client) & FL_ATCONTROLS || Client_IsInThirdPersonMode(client)) {
+	if (GetEntityFlags(client) & FL_ATCONTROLS || Client_IsInThirdPersonMode(client))
+	{
 		PrintToChat(client, "[ModelChooser] You cannot change models currently.");
 		return false;
 	}
@@ -890,7 +960,8 @@ void ExitModelChooser(int client, bool silent = false)
 	delete hudInitTimer[client];
 }
 
-void OnMenuModelSelected(int client) {
+void OnMenuModelSelected(int client)
+{
 	StopSound(client, SNDCHAN_BODY, lastPlayedSound[client]);
 
 	PlayerModel model;
@@ -912,7 +983,8 @@ void OnMenuModelSelected(int client) {
 	UpdateMenuHud(client, model);
 }
 
-void OnMenuSkinSelected(int client) {
+void OnMenuSkinSelected(int client)
+{
 	if (!selectedMenuIndexLocked[client])
 	{
 		PlayerModel model;
@@ -922,7 +994,8 @@ void OnMenuSkinSelected(int client) {
 	}
 }
 
-void UpdateMenuHud(int client, PlayerModel model, bool top = true, bool initital = false) {
+void UpdateMenuHud(int client, PlayerModel model, bool top = true, bool initital = false)
+{
 	if (hudInitTimer[client])
 		return;
 	
@@ -981,9 +1054,11 @@ public void Timer_UpdateMenuHud(Handle timer, int userId)
 
 public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float vel[3], const float angles[3], int weapon, int subtype, int cmdnum, int tickcount, int seed, const int mouse[2])
 {
-	if (0 < client <= MAXPLAYERS) {
+	if (0 < client <= MAXPLAYERS)
+	{
 		static int lastButtons[MAXPLAYERS+1];
-		if (selectedMenuIndex[client] != -1) {
+		if (selectedMenuIndex[client] != -1)
+		{
 			if (!IsPlayerAlive(client))
 			{
 				ExitModelChooser(client, true);
@@ -994,28 +1069,36 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 			}
 			else
 			{
-				if (buttons & IN_MOVELEFT && !(lastButtons[client] & IN_MOVELEFT)) {
-					if (--selectedMenuIndex[client] < 0) {
+				if (buttons & IN_MOVELEFT && !(lastButtons[client] & IN_MOVELEFT))
+				{
+					if (--selectedMenuIndex[client] < 0)
+					{
 						selectedMenuIndex[client] = selectableModels[client].Length - 1;
 					}
 					selectedMenuSkin[client] = 0;
 					OnMenuModelSelected(client);
 				}
-				if (buttons & IN_MOVERIGHT && !(lastButtons[client] & IN_MOVERIGHT)) {
-					if (++selectedMenuIndex[client] >= selectableModels[client].Length) {
+				if (buttons & IN_MOVERIGHT && !(lastButtons[client] & IN_MOVERIGHT))
+				{
+					if (++selectedMenuIndex[client] >= selectableModels[client].Length)
+					{
 						selectedMenuIndex[client] = 0;
 					}
 					selectedMenuSkin[client] = 0;
 					OnMenuModelSelected(client);
 				}
-				if (buttons & IN_FORWARD && !(lastButtons[client] & IN_FORWARD)) {
-					if (--selectedMenuSkin[client] < 0) {
+				if (buttons & IN_FORWARD && !(lastButtons[client] & IN_FORWARD))
+				{
+					if (--selectedMenuSkin[client] < 0)
+					{
 						selectedMenuSkin[client] = selectedMenuSkinCount[client] - 1;
 					}
 					OnMenuSkinSelected(client);
 				}
-				if (buttons & IN_BACK && !(lastButtons[client] & IN_BACK)) {
-					if (++selectedMenuSkin[client] >= selectedMenuSkinCount[client]) {
+				if (buttons & IN_BACK && !(lastButtons[client] & IN_BACK))
+				{
+					if (++selectedMenuSkin[client] >= selectedMenuSkinCount[client])
+					{
 						selectedMenuSkin[client] = 0;
 					}
 					OnMenuSkinSelected(client);
@@ -1030,18 +1113,19 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 // Hurt sounds
 //------------------------------------------------------
 
-public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast) {
+public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast)
+{
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
-	if (playedHurtSoundAt[client] != -1)
-		return;
-	if (GetClientTeam(client) == 1)
+	if (playedHurtSoundAt[client] != -1 || GetClientTeam(client) == 1)
 		return;
 	
 	int health = GetEventInt(event, "health");
 	PlayerModel model;
 
-	if (GetSelectedModelAuto(client, model)) {
-		if (0 < health <= model.hurtSoundHP) {
+	if (GetSelectedModelAuto(client, model))
+	{
+		if (0 < health <= model.hurtSoundHP)
+		{
 			SoundPack soundPack;
 			model.GetSoundPack(soundPack);
 			PlayRandomSound(soundPack.hurtSounds, client, client, SNDCHAN_STATIC, true, HURT_PITCH_MIN, HURT_PITCH_MAX);
@@ -1050,10 +1134,14 @@ public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast)
 	}
 }
 
-public Action CheckHealthRaise(Handle timer) {
-	for (int i = 1; i <= MaxClients; i++) {
-		if (IsClientInGame(i)) {
-			if (playedHurtSoundAt[i] != -1 && GetClientHealth(i) > playedHurtSoundAt[i]) {
+public Action CheckHealthRaise(Handle timer)
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (IsClientInGame(i))
+		{
+			if (playedHurtSoundAt[i] != -1 && GetClientHealth(i) > playedHurtSoundAt[i])
+			{
 				playedHurtSoundAt[i] = -1;
 			}
 		}
@@ -1105,6 +1193,7 @@ public void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast
 //------------------------------------------------------
 // Animation handling
 //------------------------------------------------------
+
 enum PLAYER_ANIM
 {
 	PLAYER_IDLE,
@@ -1265,7 +1354,10 @@ void ParseModels(KeyValues kv)
 
 				StudioHdr studiohdr = StudioHdr(model.path);
 				model.skinCount = studiohdr.numskinfamilies;
-				
+
+				kv.GetString("vmbody", model.vmBodyGroups, sizeof(model.vmBodyGroups));
+				TrimString(model.vmBodyGroups);
+
 				if (kv.GetDataType("anims") == KvData_None && kv.JumpToKey("anims"))
 				{
 					ParseAnims(kv, studiohdr, model);
@@ -1335,7 +1427,7 @@ void ParseAnims(KeyValues kv, StudioHdr studiohdr, PlayerModel model)
 	ParseAnim(kv, model, model.anim_noclip, "noclip", act2seq, seqNums);
 
 	StringMapSnapshot snapshot = act2seq.Snapshot();
-	for(int i = 0; i < snapshot.Length; i++)
+	for (int i = 0; i < snapshot.Length; i++)
 	{
 		WeightedSequenceList wsl;
 		snapshot.GetKey(i, actName, sizeof(actName));
@@ -1399,42 +1491,35 @@ void ParseSounds(KeyValues kv)
 					soundPack.hurtSounds = ParseFileItems(kv, true, "sound");
 					kv.GoBack();
 				}
-				else
-				{
-					soundPack.hurtSounds = CreateArray();
-				}
+				else soundPack.hurtSounds = CreateArray();
 				
 				if (kv.JumpToKey("Death"))
 				{
 					soundPack.deathSounds = ParseFileItems(kv, true, "sound");
 					kv.GoBack();
-				} else {
-					soundPack.deathSounds = CreateArray();
 				}
+				else soundPack.deathSounds = CreateArray();
 				
 				if (kv.JumpToKey("View"))
 				{
 					soundPack.viewSounds = ParseFileItems(kv, true, "sound");
 					kv.GoBack();
-				} else {
-					soundPack.viewSounds = CreateArray();
 				}
+				else soundPack.viewSounds = CreateArray();
 				
 				if (kv.JumpToKey("Select"))
 				{
 					soundPack.selectSounds = ParseFileItems(kv, true, "sound");
 					kv.GoBack();
-				} else {
-					soundPack.selectSounds = CreateArray();
 				}
+				else soundPack.selectSounds = CreateArray();
 
 				if (kv.JumpToKey("Jump"))
 				{
 					soundPack.jumpSounds = ParseFileItems(kv, true, "sound");
 					kv.GoBack();
-				} else {
-					soundPack.jumpSounds = CreateArray();
 				}
+				else soundPack.jumpSounds = CreateArray();
 
 				String_ToUpper(name, name, sizeof(name));
 				soundMap.SetArray(name, soundPack, sizeof(SoundPack));
@@ -1473,7 +1558,8 @@ ArrayList ParseFileItems(KeyValues kv, bool precache, const char[] folderType = 
 // Utils
 //------------------------------------------------------
 
-bool PlayRandomSound(ArrayList soundList, int client, int entity = SOUND_FROM_PLAYER, int channel = SNDCHAN_AUTO, bool toAll = false, int pitchMin = 100, int pitchMax = 100, float volume = SNDVOL_NORMAL)
+bool PlayRandomSound(ArrayList soundList, int client, int entity = SOUND_FROM_PLAYER, int channel = SNDCHAN_AUTO,
+						bool toAll = false, int pitchMin = 100, int pitchMax = 100, float volume = SNDVOL_NORMAL)
 {
 	if (soundList && soundList.Length)
 	{
@@ -1508,20 +1594,121 @@ public Action BlockDamage(int victim, int &attacker, int &inflictor, float &dama
 	return Plugin_Handled;
 }
 
-stock void LoadDHookDetour(const Handle pGameConfig, DynamicDetour& pHandle, const char[] szFuncName, DHookCallback pCallbackPre = INVALID_FUNCTION, DHookCallback pCallbackPost = INVALID_FUNCTION)
+stock void LoadDHookDetour(GameData pGameConfig, DynamicDetour& pHandle, const char[] szFuncName, DHookCallback pCallbackPre = null, DHookCallback pCallbackPost = null)
 {
 	pHandle = DynamicDetour.FromConf(pGameConfig, szFuncName);
-	if (pHandle == null)
+	if (!pHandle)
 		SetFailState("Couldn't create hook %s", szFuncName);
-	if (pCallbackPre != INVALID_FUNCTION && !pHandle.Enable(Hook_Pre, pCallbackPre))
+	if (pCallbackPre && !pHandle.Enable(Hook_Pre, pCallbackPre))
 		SetFailState("Couldn't enable pre detour hook %s", szFuncName);
-	if (pCallbackPost != INVALID_FUNCTION && !pHandle.Enable(Hook_Post, pCallbackPost))
+	if (pCallbackPost && !pHandle.Enable(Hook_Post, pCallbackPost))
 		SetFailState("Couldn't enable post detour hook %s", szFuncName);
 }
 
-stock void LoadDHookVirtual(const Handle pGameConfig, DynamicHook& pHandle, const char[] szFuncName)
+stock void LoadDHookVirtual(GameData pGameConfig, DynamicHook& pHandle, const char[] szFuncName)
 {
 	pHandle = DynamicHook.FromConf(pGameConfig, szFuncName);
 	if (pHandle == null)
 		SetFailState("Couldn't create hook %s", szFuncName);
+}
+
+// Copy pasta of "SetBodygroup" from the SDK
+void CalcBodygroup(StudioHdr pStudioHdr, int& body, int iGroup, int iValue)
+{
+	if (!pStudioHdr)
+		return;
+
+	BodyPart pBodyPart = pStudioHdr.GetBodyPart(iGroup);
+	if (!pBodyPart.valid)
+		return;
+
+	int numModels = pBodyPart.nummodels;
+	if (iValue >= numModels)
+		return;
+
+	int base = pBodyPart.base;
+	int iCurrent = (body / base) % numModels;
+
+	body = (body - (iCurrent * base) + (iValue * base));
+}
+
+void SetEntityBody(int entity, int body)
+{
+	SetEntProp(entity, Prop_Send, "m_nBody", body);
+}
+
+int GetEntityBody(int entity)
+{
+	return GetEntProp(entity, Prop_Send, "m_nBody");
+}
+
+void ApplyEntityBodyGroupsFromString(int entity, const char[] str)
+{
+	if (str[0] == EOS)
+		return;
+	
+	StudioHdr pStudio = StudioHdr.FromEntity(entity);
+	if (!pStudio.valid)
+		return;
+
+	int numBodyParts = pStudio.numbodyparts;
+	int body = GetEntityBody(entity);
+
+	char buffer1[128], buffer2[128];
+	int strIndex, n;
+	for (int count = 0;; count++)
+	{
+		n = SplitString(str[strIndex], ";", buffer1, sizeof(buffer1));
+		TrimString(buffer1);
+		if (n == -1)
+		{
+			if (count)
+			{
+				LogError("Invalid bodygroup string: \"%s\"", str);
+				return;
+			}
+			else
+			{
+				// no separator found - assume raw body index specified
+				body = StringToInt(buffer1);
+				break;
+			}
+		}
+		strIndex += n;
+
+		n = SplitString(str[strIndex], ";", buffer2, sizeof(buffer2));
+		if (n == -1)
+		{
+			// copy remainder
+			strcopy(buffer2, sizeof(buffer2), str[strIndex]);
+		}
+		TrimString(buffer2);
+
+		// Convert buffers to actual indexes on the model
+
+		int bodyPartIndex = -1;
+		int subModelIndex = StringToInt(buffer2);
+		
+		for (int i = 0; i < numBodyParts; i++)
+		{
+			BodyPart pBodyPart = pStudio.GetBodyPart(i);
+			pBodyPart.GetName(buffer2, sizeof(buffer2));
+			if (StrEqual(buffer1, buffer2, false))
+			{
+				bodyPartIndex = i;
+				break;
+			}
+		}
+
+		if (bodyPartIndex != -1)
+			CalcBodygroup(pStudio, body, bodyPartIndex, subModelIndex);
+		
+		if (n == -1)
+		{
+			// end of list
+			break;
+		}
+		strIndex += n;
+	}
+	SetEntityBody(entity, body);
 }
