@@ -38,9 +38,9 @@ jobs:
 
       - name: Merge deps
         run: |
-          cp -R smartdm/. .
-          cp -R smlib/. .
-          cp -R StudioHdr/. .
+          cp -R smartdm/* .
+          cp -R smlib/* .
+          cp -R StudioHdr/* .
 
       - name: Setup sourcemod compiler
         id: setup-sp
