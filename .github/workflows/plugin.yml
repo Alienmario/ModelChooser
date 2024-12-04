@@ -20,21 +20,27 @@ jobs:
       - name: Checkout smartdm
         uses: actions/checkout@v4
         with:
-          clean: false
           repository: Alienmario/smartdm-redux
+          path: smartdm
 
       - name: Checkout smlib
         uses: actions/checkout@v4
         with:
-          clean: false
           repository: bcserv/smlib
           ref: transitional_syntax
+          path: smlib
 
       - name: Checkout StudioHdr
         uses: actions/checkout@v4
         with:
-          clean: false
           repository: Alienmario/StudioHdr
+          path: StudioHdr
+
+      - name: Merge deps
+        run: |
+          cp -R . smartdm/.
+          cp -R . smlib/.
+          cp -R . StudioHdr/.
 
       - name: Setup sourcemod compiler
         id: setup-sp
