@@ -1,3 +1,5 @@
+[![CI](https://github.com/Alienmario/ModelChooser/actions/workflows/plugin.yml/badge.svg)](https://github.com/Alienmario/ModelChooser/actions/workflows/plugin.yml)
+
 # ModelChooser
  A better model chooser for Sourcemod.
 
