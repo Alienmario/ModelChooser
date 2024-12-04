@@ -21,7 +21,7 @@
 3. Done!
 
 #### Dependencies
-- (Compile+Gamedata) **Natanel-Shitrit/[StudioHdr](https://github.com/Natanel-Shitrit/StudioHdr)**
+- (Compile+Gamedata) **Alienmario/[StudioHdr](https://github.com/Alienmario/StudioHdr)**
 - (Compile+Gamedata) **Alienmario/[smartdm-redux](https://github.com/Alienmario/smartdm-redux)**
 - (Compile) **bcserv/[smlib](https://github.com/bcserv/smlib/tree/transitional_syntax)**
 - (Compile+Runtime) **DHooks detours** - Included in Sourcemod 11+
