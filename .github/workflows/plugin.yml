@@ -20,17 +20,20 @@ jobs:
       - name: Checkout smartdm
         uses: actions/checkout@v4
         with:
+          clean: false
           repository: Alienmario/smartdm-redux
 
       - name: Checkout smlib
         uses: actions/checkout@v4
         with:
+          clean: false
           repository: bcserv/smlib
           ref: transitional_syntax
 
       - name: Checkout StudioHdr
         uses: actions/checkout@v4
         with:
+          clean: false
           repository: Alienmario/StudioHdr
 
       - name: Setup sourcemod compiler
