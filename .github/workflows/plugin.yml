@@ -1,0 +1,68 @@
+name: CI
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  build:
+    name: "Build"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        game:
+          - { dir: bms }
+          - { dir: hl2mp }
+              
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        
+      - name: Checkout smartdm
+        uses: actions/checkout@v4
+        with:
+          repository: Alienmario/smartdm-redux
+
+      - name: Checkout smlib
+        uses: actions/checkout@v4
+        with:
+          repository: bcserv/smlib
+          ref: transitional_syntax
+
+      - name: Checkout StudioHdr
+        uses: actions/checkout@v4
+        with:
+          repository: Alienmario/StudioHdr
+
+      - name: Setup sourcemod compiler
+        id: setup-sp
+        uses: rumblefrog/setup-sp@master
+        with:
+          version: '1.12.x'
+          version-file: ./scripting/model_chooser_2020.sp
+          define-name: PLUGIN_VERSION
+
+      - name: Compile plugins
+        run: |
+          mkdir -p plugins
+          for file in scripting/*.sp
+          do
+            plugin="$(basename "${file%.*}")"
+            echo -e "\nCompiling $plugin\n"
+            spcomp -v2 -i scripting/include -o plugins/"$plugin".smx "$file"
+          done
+
+      - name: Create package
+        run: |
+          OUT="/tmp/build"
+          SM="${OUT}/addons/sourcemod"
+          mkdir -p $SM/configs
+          cp -R plugins $SM
+          cp -R scripting $SM
+          cp -R gamedata $SM
+          cp -R configs-${{ matrix.game.dir }}/. $SM/configs
+      
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelchooser-${{ matrix.game.dir }}-v${{ steps.setup-sp.outputs.plugin-version }}.${{ github.run_number }}
+          path: /tmp/build/
