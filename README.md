@@ -5,11 +5,12 @@
 
 #### Features
 - Third-person model browser
-- Custom per-model sounds and animations
+- Custom per-model sounds (all) and animations (hl2dm only)
 - Persistence via cookies
 - Extensive configuration
 - Admin only and locked models
 - Fully automatic downloads
+- Skins and bodygroups
 - Scripting API
 
 #### Supported games
