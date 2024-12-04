@@ -21,26 +21,26 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Alienmario/smartdm-redux
-          path: smartdm
+          path: deps/smartdm
 
       - name: Checkout smlib
         uses: actions/checkout@v4
         with:
           repository: bcserv/smlib
           ref: transitional_syntax
-          path: smlib
+          path: deps/smlib
 
       - name: Checkout StudioHdr
         uses: actions/checkout@v4
         with:
           repository: Alienmario/StudioHdr
-          path: StudioHdr
+          path: deps/StudioHdr
 
       - name: Merge deps
         run: |
-          cp -R smartdm/* .
-          cp -R smlib/* .
-          cp -R StudioHdr/* .
+          cp -R deps/smartdm/* .
+          cp -R deps/smlib/scripting/include/* scripting/include
+          cp -R deps/StudioHdr/* .
 
       - name: Setup sourcemod compiler
         id: setup-sp
@@ -69,6 +69,10 @@ jobs:
           cp -R scripting $SM
           cp -R gamedata $SM
           cp -R configs-${{ matrix.game.dir }}/. $SM/configs
+          if [ -d "data" ]
+          then
+            cp -R data $SM
+          fi
       
       - name: Upload package
         uses: actions/upload-artifact@v4
