@@ -1,13 +1,16 @@
+[![CI](https://github.com/Alienmario/ModelChooser/actions/workflows/plugin.yml/badge.svg)](https://github.com/Alienmario/ModelChooser/actions/workflows/plugin.yml)
+
 # ModelChooser
  A better model chooser for Sourcemod.
 
 #### Features
 - Third-person model browser
-- Custom per-model sounds and animations
+- Custom per-model sounds (all) and animations (hl2dm only)
 - Persistence via cookies
 - Extensive configuration
 - Admin only and locked models
 - Fully automatic downloads
+- Skins and bodygroups
 - Scripting API
 
 #### Supported games
@@ -22,7 +25,7 @@
 
 #### Dependencies
 - Sourcemod 1.12+
-- (Compile+Gamedata) **Natanel-Shitrit/[StudioHdr](https://github.com/Natanel-Shitrit/StudioHdr)**
+- (Compile+Gamedata) **Alienmario/[StudioHdr](https://github.com/Alienmario/StudioHdr)**
 - (Compile+Gamedata) **Alienmario/[smartdm-redux](https://github.com/Alienmario/smartdm-redux)**
 - (Compile) **bcserv/[smlib](https://github.com/bcserv/smlib/tree/transitional_syntax)**
 
