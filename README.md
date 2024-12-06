@@ -21,17 +21,19 @@
 3. Done!
 
 #### Dependencies
+- Sourcemod 1.12+
 - (Compile+Gamedata) **Natanel-Shitrit/[StudioHdr](https://github.com/Natanel-Shitrit/StudioHdr)**
 - (Compile+Gamedata) **Alienmario/[smartdm-redux](https://github.com/Alienmario/smartdm-redux)**
 - (Compile) **bcserv/[smlib](https://github.com/bcserv/smlib/tree/transitional_syntax)**
-- (Compile+Runtime) **DHooks detours** - Included in Sourcemod 11+
 
 #### Usage
 Type !models to enter. Press movement keys to browse. Press use or jump to exit.
 
 #### Config
-- `modelchooser_immunity` (0/1) Whether players have damage immunity / are unable to fire when selecting models
-- `modelchooser_autoreload` (0/1) Whether to reload model list on mapchanges
+- **modelchooser_immunity** (0/1) Whether players are immune to damage when selecting models. Default: `0`
+- **modelchooser_autoreload** (0/1) Whether to reload model list on mapchanges. Default: `0`
+- **modelchooser_lock_model** Model to display for locked playermodels. Default: `models/props_wasteland/prison_padlock001a.mdl`
+- **modelchooser_lock_scale** Scale of the lock model. Default: `5.0`
 
 #### Admin commands
 - `sm_unlockmodel` Unlock a locked model by name for a player

@@ -33,11 +33,14 @@ public Plugin myinfo =
 #define JUMP_SND_DELAY_MIN 2.0
 #define JUMP_SND_DELAY_MAX 2.0
 
+#define EF_NOSHADOW	0x010
+#define EF_NODRAW 0x020
+
 // #define OVERLAY     "folder/example"
 // #define OVERLAY_VMT "materials/" ...OVERLAY... ".vmt"
 // #define OVERLAY_VTF "materials/" ...OVERLAY... ".vtf"
 
-#define DEFAULT_MODEL "models/error.mdl"
+#define FALLBACK_MODEL "models/error.mdl"
 int DEFAULT_HUD_COLOR[] = {150, 150, 150, 150};
 
 //------------------------------------------------------
@@ -63,11 +66,11 @@ enum struct SoundPack
 
 	void Precache()
 	{
-		PrecacheSounds(this.hurtSounds);
-		PrecacheSounds(this.deathSounds);
-		PrecacheSounds(this.viewSounds);
-		PrecacheSounds(this.selectSounds);
-		PrecacheSounds(this.jumpSounds);
+		PrecacheSoundsInList(this.hurtSounds);
+		PrecacheSoundsInList(this.deathSounds);
+		PrecacheSoundsInList(this.viewSounds);
+		PrecacheSoundsInList(this.selectSounds);
+		PrecacheSoundsInList(this.jumpSounds);
 	}
 }
 
@@ -137,7 +140,7 @@ methodmap WeightedSequenceList < ArrayList
 	public int NextSequence()
 	{
 		int size = this.Length;
-		if (size > 0)
+		if (size)
 		{
 			if (size == 1)
 				return this.Get(0, WeightedSequence::sequence);
@@ -168,10 +171,7 @@ enum struct PlayerAnimation
 
 	void Close()
 	{
-		if (this.seqList)
-		{
-			this.seqList.Close();
-		}
+		delete this.seqList;
 	}
 }
 
@@ -261,6 +261,32 @@ methodmap ModelList < ArrayList
 	}
 }
 
+enum struct SelectionData
+{
+	// Index into selectableModels, -1 = invalid
+	int index;
+
+	// Model skin index
+	int skin;
+
+	// Cached by menu
+	int skinCount;
+	bool locked;
+
+	void Reset()
+	{
+		this.index = -1;
+		this.skin = 0;
+		this.skinCount = 0;
+		this.locked = false;
+	}
+	
+	bool IsValid()
+	{
+		return this.index != -1 && !this.locked;
+	}
+}
+
 //------------------------------------------------------
 // Variables
 //------------------------------------------------------
@@ -268,54 +294,61 @@ methodmap ModelList < ArrayList
 // Complete model list containing entries of PlayerModel
 ModelList modelList;
 
-// The filtered list of selectable models. Contains indexes into modelList
-ArrayList selectableModels[MAXPLAYERS+1];
+// The filtered list of selectable models. Contains indexes into modelList. Is null until client models are initialized.
+ArrayList selectableModels[MAXPLAYERS + 1];
 
-// Index into selectableModels for active model
-int selectedIndex[MAXPLAYERS+1];
+// Active selection data
+SelectionData activeSelection[MAXPLAYERS + 1];
 
-// Active model skin
-int selectedSkin[MAXPLAYERS+1];
-
-// Index into selectableModels for active model in menu, -1 indicates menu closed
-int selectedMenuIndex[MAXPLAYERS+1];
-
-// Active menu model skin
-int selectedMenuSkin[MAXPLAYERS+1];
-
-// Whether currently selected model in menu is locked
-bool selectedMenuIndexLocked[MAXPLAYERS+1];
-
-// Skin count of currently selected model in menu
-int selectedMenuSkinCount[MAXPLAYERS+1];
+// Menu selection data
+SelectionData menuSelection[MAXPLAYERS + 1];
 
 // Map containing names of unlocked models
-StringMap unlockedModels[MAXPLAYERS+1];
+StringMap unlockedModels[MAXPLAYERS + 1];
 
 // Used for stopping
-char lastPlayedSound[MAXPLAYERS+1][PLATFORM_MAX_PATH];
+char lastPlayedSound[MAXPLAYERS + 1][PLATFORM_MAX_PATH];
 
 // Flag for playing hurt sound once
-int playedHurtSoundAt[MAXPLAYERS+1] = {-1, ...};
+int playedHurtSoundAt[MAXPLAYERS + 1] = {-1, ...};
 
+// Time to play next jump sound at
 float nextJumpSound[MAXPLAYERS + 1];
 
 // Counter for # of checks to pass until client models can be initialized
-int clientInitChecks[MAXPLAYERS+1];
+int clientInitChecks[MAXPLAYERS + 1];
 
+// Hud channel toggles (bi-channel switching allows displaying proper colors)
 int topHudChanToggle[MAXPLAYERS + 1];
 int bottomHudChanToggle[MAXPLAYERS + 1] = {2, ...};
+
+// Delayed hud init timer
 Handle hudInitTimer[MAXPLAYERS + 1];
-DynamicHook DHook_SetModel;
-DynamicHook DHook_DeathSound;
-DynamicHook DHook_SetAnimation;
-Handle Func_ResetSequence;
-Cookie modelCookie;
-Cookie skinCookie;
-GlobalForward onModelChangedFwd;
+
+// Downloads fileset
+SmartDM_FileSet downloads;
+
+// Hooks
+DynamicHook hkSetModel;
+DynamicHook hkDeathSound;
+DynamicHook hkSetAnimation;
+
+// Calls
+Handle callResetSequence;
+
+// Cookies
+Cookie cookieModel;
+Cookie cookieSkin;
+
+// Forwards
+GlobalForward fwdOnModelChanged;
+
+// Cvars
 ConVar cvSelectionImmunity;
 ConVar cvAutoReload;
-SmartDM_FileSet downloads;
+ConVar cvLockModel;
+ConVar cvLockScale;
+ConVar mp_forcecamera;
 
 //------------------------------------------------------
 // Natives
@@ -393,7 +426,7 @@ public any Native_SelectModel(Handle plugin, int numParams)
 
 public any Native_IsClientChoosing(Handle plugin, int numParams)
 {
-	return selectedMenuIndex[GetNativeCell(1)] != -1;
+	return menuSelection[GetNativeCell(1)].index != -1;
 }
 
 //------------------------------------------------------
@@ -402,20 +435,28 @@ public any Native_IsClientChoosing(Handle plugin, int numParams)
 
 public void OnPluginStart()
 {
+	LoadTranslations("common.phrases");
+
 	modelList = new ModelList();
 	soundMap = new SoundMap();
 	downloads = new SmartDM_FileSet();
-	modelCookie = new Cookie("playermodel", "Stores player model prefernce", CookieAccess_Protected);
-	skinCookie = new Cookie("playermodel_skin", "Stores player model skin prefernce", CookieAccess_Protected);
-	onModelChangedFwd = new GlobalForward("ModelChooser_OnModelChanged", ET_Ignore, Param_Cell, Param_String);
+	cookieModel = new Cookie("playermodel", "Stores player model prefernce", CookieAccess_Protected);
+	cookieSkin = new Cookie("playermodel_skin", "Stores player model skin prefernce", CookieAccess_Protected);
 	
-	LoadTranslations("common.phrases");
+	fwdOnModelChanged = new GlobalForward("ModelChooser_OnModelChanged", ET_Ignore, Param_Cell, Param_String);
+	
 	RegConsoleCmd("sm_models", Command_Model);
 	RegConsoleCmd("sm_model", Command_Model);
+	RegConsoleCmd("sm_skins", Command_Model);
+	RegConsoleCmd("sm_skin", Command_Model);
 	RegAdminCmd("sm_unlockmodel", Command_UnlockModel, ADMFLAG_KICK, "Unlock a locked model by name for a player");
 	RegAdminCmd("sm_lockmodel", Command_LockModel, ADMFLAG_KICK, "Re-lock a model by name for a player");
-	cvSelectionImmunity = CreateConVar("modelchooser_immunity", "0", "Whether players have damage immunity / are unable to fire when selecting models", _, true, 0.0, true, 1.0);
+
+	cvSelectionImmunity = CreateConVar("modelchooser_immunity", "0", "Whether players are immune to damage when selecting models", _, true, 0.0, true, 1.0);
 	cvAutoReload = CreateConVar("modelchooser_autoreload", "0", "Whether to reload model list on mapchanges", _, true, 0.0, true, 1.0);
+	cvLockModel = CreateConVar("modelchooser_lock_model", "models/props_wasteland/prison_padlock001a.mdl", "Model to display for locked playermodels");
+	cvLockScale = CreateConVar("modelchooser_lock_scale", "5.0", "Scale of the lock model", _, true, 0.1);
+	mp_forcecamera = FindConVar("mp_forcecamera");
 	
 	HookEvent("player_hurt", Event_PlayerHurt, EventHookMode_Post);
 	HookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
@@ -426,16 +467,16 @@ public void OnPluginStart()
 	{
 		SetFailState("Failed to load \"modelchooser\" gamedata");
 	}
-	LoadDHookVirtual(gamedata, DHook_SetModel, "CBaseEntity::SetModel_");
-	LoadDHookVirtual(gamedata, DHook_DeathSound, "CBasePlayer::DeathSound");
-	LoadDHookVirtual(gamedata, DHook_SetAnimation, "CBasePlayer::SetAnimation");
+	LoadDHookVirtual(gamedata, hkSetModel, "CBaseEntity::SetModel");
+	LoadDHookVirtual(gamedata, hkDeathSound, "CBasePlayer::DeathSound");
+	LoadDHookVirtual(gamedata, hkSetAnimation, "CBasePlayer::SetAnimation");
 	
 	char szResetSequence[] = "CBaseAnimating::ResetSequence";
 	StartPrepSDKCall(SDKCall_Entity);
 	if (!PrepSDKCall_SetFromConf(gamedata, SDKConf_Signature, szResetSequence))
 		SetFailState("Could not obtain gamedata signature %s", szResetSequence);
 	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
-	if (!(Func_ResetSequence = EndPrepSDKCall()))
+	if (!(callResetSequence = EndPrepSDKCall()))
 		SetFailState("Could not prep SDK call %s", szResetSequence);
 	
 	gamedata.Close();
@@ -458,9 +499,13 @@ public void OnConfigsExecuted()
 		modelList.Precache();
 	}
 	
+	char lockModel[PLATFORM_MAX_PATH];
+	cvLockModel.GetString(lockModel, sizeof(lockModel));
+	SmartDM.AddEx(lockModel, downloads);
+
 	downloads.AddToDownloadsTable();
 
-	PrecacheModel(DEFAULT_MODEL, true);
+	PrecacheModel(FALLBACK_MODEL, true);
 	#if defined OVERLAY_VMT
 	AddFileToDownloadsTable(OVERLAY_VMT);
 	#endif
@@ -488,10 +533,8 @@ public void OnClientConnected(int client)
 	delete unlockedModels[client];
 	delete hudInitTimer[client];
 	unlockedModels[client] = new StringMap();
-	selectedIndex[client] = 0;
-	selectedMenuIndex[client] = -1;
-	selectedSkin[client] = 0;
-	selectedMenuSkin[client] = 0;
+	activeSelection[client].Reset();
+	menuSelection[client].Reset();
 	playedHurtSoundAt[client] = -1;
 	clientInitChecks[client] = 3;
 	nextJumpSound[client] = 0.0;
@@ -501,10 +544,12 @@ public void OnClientPutInServer(int client)
 {
 	if (!IsFakeClient(client))
 	{
-		DHookEntity(DHook_SetModel, false, client, _, Hook_SetModel);
-		DHookEntity(DHook_DeathSound, false, client, _, Hook_DeathSound);
-		DHookEntity(DHook_SetAnimation, false, client, _, Hook_SetAnimation);
-		clientInitChecks[client]--;
+		DHookEntity(hkSetModel, false, client, _, Hook_SetModel);
+		DHookEntity(hkDeathSound, false, client, _, Hook_DeathSound);
+		DHookEntity(hkSetAnimation, false, client, _, Hook_SetAnimation);
+
+		if (!--clientInitChecks[client])
+			InitClientModels(client);
 	}
 }
 
@@ -524,7 +569,7 @@ public void OnEntityCreated(int entity, const char[] classname)
 {
 	if (StrContains(classname, "viewmodel") != -1 && HasEntProp(entity, Prop_Data, "m_hWeapon"))
 	{
-		DHookEntity(DHook_SetModel, false, entity, _, Hook_SetViewModelModel);
+		DHookEntity(hkSetModel, false, entity, _, Hook_SetViewModelModel);
 	}
 }
 
@@ -655,11 +700,14 @@ public Action Command_LockModel(int client, int args)
 
 public MRESReturn Hook_SetModel(int client, DHookParam hParams)
 {
+	SelectionData selection;
 	PlayerModel model;
-	if (GetSelectedModelAuto(client, model))
+
+	GetSelectionDataAuto(client, selection);
+	if (Selection2Model(client, selection, model))
 	{
 		DHookSetParamString(hParams, 1, model.path);
-		SetEntProp(client, Prop_Data, "m_nSkin", GetSelectedSkinAuto(client));
+		SetEntProp(client, Prop_Data, "m_nSkin", selection.skin);
 		UpdateViewModels(client);
 		return MRES_ChangedHandled;
 	}
@@ -670,7 +718,8 @@ void RefreshModel(int client)
 {
 	if (IsClientInGame(client))
 	{
-		SetEntityModel(client, DEFAULT_MODEL);
+		// something went wrong if this sticks
+		SetEntityModel(client, FALLBACK_MODEL);
 	}
 }
 
@@ -701,10 +750,10 @@ void UpdateViewModel(int vm)
 		int client = GetEntPropEnt(vm, Prop_Data, "m_hOwner");
 		if (0 < client <= MaxClients)
 		{
-			PlayerModel playermodel;
-			if (GetSelectedModelAuto(client, playermodel))
+			PlayerModel model;
+			if (GetSelectedModelAuto(client, model))
 			{
-				ApplyEntityBodyGroupsFromString(vm, playermodel.vmBodyGroups);
+				ApplyEntityBodyGroupsFromString(vm, model.vmBodyGroups);
 			}
 		}
 	}
@@ -712,25 +761,27 @@ void UpdateViewModel(int vm)
 
 void InitClientModels(int client)
 {
-	if (selectableModels[client] == null)
+	if (selectableModels[client])
+		return;
+
+	selectableModels[client] = BuildSelectableModels(client);
+	if (!selectableModels[client].Length)
+		return;
+	
+	char modelName[MAX_MODELNAME];
+	cookieModel.Get(client, modelName, sizeof(modelName));
+	if (!SelectModelByName(client, modelName, cookieSkin.GetInt(client)))
 	{
-		selectableModels[client] = BuildSelectableModels(client);
-		
-		char modelName[MAX_MODELNAME], modelSkin[4];
-		modelCookie.Get(client, modelName, sizeof(modelName));
-		skinCookie.Get(client, modelSkin, sizeof(modelSkin));
-		if (!SelectModelByName(client, modelName, StringToInt(modelSkin)))
+		if (!SelectDefaultModel(client, modelName))
 		{
-			if (!SelectModelByDefaultPrio(client, modelName))
-			{
-				return;
-			}
+			return;
 		}
-		Call_StartForward(onModelChangedFwd);
-		Call_PushCell(client);
-		Call_PushString(modelName);
-		Call_Finish();
 	}
+
+	Call_StartForward(fwdOnModelChanged);
+	Call_PushCell(client);
+	Call_PushString(modelName);
+	Call_Finish();
 }
 
 ArrayList BuildSelectableModels(int client)
@@ -750,24 +801,26 @@ ArrayList BuildSelectableModels(int client)
 	return list;
 }
 
-bool GetSelectedModelAuto(int client, PlayerModel selectedModel)
+bool GetSelectedModelAuto(int client, PlayerModel model)
 {
-	bool inMenu = (!selectedMenuIndexLocked[client] && selectedMenuIndex[client] != -1);
-	return GetSelectedModel(client, selectedModel, inMenu);
+	return GetSelectedModel(client, model, menuSelection[client].IsValid());
 }
 
-int GetSelectedSkinAuto(int client)
+bool GetSelectedModel(int client, PlayerModel model, bool inMenu = false)
 {
-	bool inMenu = (!selectedMenuIndexLocked[client] && selectedMenuIndex[client] != -1);
-	return (inMenu? selectedMenuSkin[client] : selectedSkin[client]);
+	return Selection2Model(client, inMenu? menuSelection[client] : activeSelection[client], model);
 }
 
-bool GetSelectedModel(int client, PlayerModel selectedModel, bool inMenu = false)
+void GetSelectionDataAuto(int client, SelectionData selectionData)
 {
-	if(selectableModels[client] != null && selectableModels[client].Length)
+	selectionData = menuSelection[client].IsValid()? menuSelection[client] : activeSelection[client];
+}
+
+bool Selection2Model(int client, const SelectionData data, PlayerModel model)
+{
+	if (data.index != -1 && selectableModels[client] && selectableModels[client].Length)
 	{
-		int index = selectableModels[client].Get(inMenu? selectedMenuIndex[client] : selectedIndex[client]);
-		modelList.GetArray(index, selectedModel);
+		modelList.GetArray(selectableModels[client].Get(data.index), model);
 		return true;
 	}
 	return false;
@@ -782,8 +835,8 @@ bool SelectModelByName(int client, const char[] modelName, int skin = 0)
 		int clIndex = selectableModels[client].FindValue(index);
 		if (clIndex != -1 && !IsModelLocked(model, client))
 		{
-			selectedIndex[client] = clIndex;
-			selectedSkin[client] = skin;
+			activeSelection[client].index = clIndex;
+			activeSelection[client].skin = skin;
 			RefreshModel(client);
 			return true;
 		}
@@ -791,14 +844,14 @@ bool SelectModelByName(int client, const char[] modelName, int skin = 0)
 	return false;
 }
 
-bool SelectModelByDefaultPrio(int client, char selectedName[MAX_MODELNAME] = "")
+bool SelectDefaultModel(int client, char selectedName[MAX_MODELNAME] = "")
 {
 	if (!selectableModels[client].Length)
 		return false;
 	
 	// find models with the highest prio
 	// select random if there are multiple
-	int maxPrio = -1;
+	int maxPrio = cellmin;
 	ArrayList maxPrioList = new ArrayList();
 	
 	for (int i = 0; i < selectableModels[client].Length; i++)
@@ -821,9 +874,10 @@ bool SelectModelByDefaultPrio(int client, char selectedName[MAX_MODELNAME] = "")
 	
 	if (maxPrioList.Length)
 	{
-		selectedIndex[client] = maxPrioList.Get(Math_GetRandomInt(0, maxPrioList.Length - 1));
+		activeSelection[client].index = maxPrioList.Get(Math_GetRandomInt(0, maxPrioList.Length - 1));
+
 		PlayerModel model;
-		modelList.GetArray(selectableModels[client].Get(selectedIndex[client]), model);
+		Selection2Model(client, activeSelection[client], model);
 		RefreshModel(client);
 		selectedName = model.name;
 		delete maxPrioList;
@@ -869,7 +923,7 @@ bool PreEnterCheck(int client)
 		PrintToChat(client, "[ModelChooser] You need to be alive to use models.");
 		return false;
 	}
-	if (selectedMenuIndex[client] != -1)
+	if (menuSelection[client].index != -1)
 	{
 		PrintToChat(client, "[ModelChooser] You are already changing models, dummy :]");
 		return false;
@@ -884,36 +938,47 @@ bool PreEnterCheck(int client)
 
 void EnterModelChooser(int client)
 {
-	selectedMenuIndex[client] = selectedIndex[client];
-	selectedMenuSkin[client] = selectedSkin[client];
+	menuSelection[client] = activeSelection[client];
 	
 	int ragdoll = GetEntPropEnt(client, Prop_Send, "m_hRagdoll");
 	if (ragdoll != -1)
 	{
 		AcceptEntityInput(ragdoll, "Kill");
 	}
+
 	StopSound(client, SNDCHAN_STATIC, lastPlayedSound[client]);
 	StopSound(client, SNDCHAN_BODY, lastPlayedSound[client]);
 	StopSound(client, SNDCHAN_AUTO, lastPlayedSound[client]);
 	
+	// center camera pitch
+	if (mp_forcecamera)
+	{
+		mp_forcecamera.ReplicateToClient(client, "0");
+	}
+	float eyeAngles[3];
+	GetClientEyeAngles(client, eyeAngles);
+	eyeAngles[0] = 0.0;
+	TeleportEntity(client, .angles = eyeAngles);
+
 	Client_SetObserverTarget(client, 0);
 	Client_SetObserverMode(client, OBS_MODE_DEATHCAM, false);
 	Client_SetDrawViewModel(client, false);
+	FixThirdpersonWeapons(client);
 	#if defined OVERLAY
 	Client_SetScreenOverlay(client, OVERLAY);
 	#endif
 	Client_SetHideHud(client, HIDEHUD_HEALTH|HIDEHUD_CROSSHAIR|HIDEHUD_FLASHLIGHT|HIDEHUD_WEAPONSELECTION|HIDEHUD_MISCSTATUS);
 	Client_ScreenFade(client, 100, FFADE_PURGE|FFADE_IN, 0);
 	SetEntityFlags(client, GetEntityFlags(client) | FL_ATCONTROLS);
+	SetEntPropFloat(client, Prop_Data, "m_flNextAttack", float(cellmax));
 
 	if (cvSelectionImmunity.BoolValue)
 	{
-		SDKHook(client, SDKHook_OnTakeDamage, BlockDamage);
-		SetEntPropFloat(client, Prop_Data, "m_flNextAttack", float(SIZE_OF_INT));
+		SDKHook(client, SDKHook_OnTakeDamage, Hook_BlockDamage);
 	}
 	
-	hudInitTimer[client] = CreateTimer(0.8, Timer_UpdateMenuHud, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
-	OnMenuModelSelected(client);
+	hudInitTimer[client] = CreateTimer(0.1, Timer_MenuInit1, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+	OnMenuModelSelection(client);
 }
 
 void ExitModelChooser(int client, bool silent = false)
@@ -921,20 +986,24 @@ void ExitModelChooser(int client, bool silent = false)
 	Client_SetObserverTarget(client, -1);
 	Client_SetObserverMode(client, OBS_MODE_NONE, false);
 	Client_SetDrawViewModel(client, true);
+	if (mp_forcecamera)
+	{
+		mp_forcecamera.ReplicateToClient(client, mp_forcecamera.BoolValue? "1" : "0");
+	}
 	#if defined OVERLAY
 	Client_SetScreenOverlay(client, "");
 	#endif
 	Client_SetHideHud(client, 0);
 	SetEntityFlags(client, GetEntityFlags(client) & ~FL_ATCONTROLS);
 	ClearHud(client);
-	SDKUnhook(client, SDKHook_OnTakeDamage, BlockDamage);
-	SetEntPropFloat(client, Prop_Data, "m_flNextAttack", GetGameTime());
+	SDKUnhook(client, SDKHook_OnTakeDamage, Hook_BlockDamage);
 	StopSound(client, SNDCHAN_BODY, lastPlayedSound[client]);
+	SetEntPropFloat(client, Prop_Data, "m_flNextAttack", GetGameTime() + 0.25);
+	ToggleMenuLock(client, false);
+	delete hudInitTimer[client];
 	
 	PlayerModel model;
-	GetSelectedModel(client, model, true);
-	
-	if (!selectedMenuIndexLocked[client])
+	if (menuSelection[client].IsValid() && Selection2Model(client, menuSelection[client], model))
 	{
 		if (!silent)
 		{
@@ -942,55 +1011,108 @@ void ExitModelChooser(int client, bool silent = false)
 			model.GetSoundPack(soundPack);
 			PlayRandomSound(soundPack.selectSounds, client);
 		}
-		selectedIndex[client] = selectedMenuIndex[client];
-		selectedSkin[client] = selectedMenuSkin[client];
+		activeSelection[client] = menuSelection[client];
 		
-		modelCookie.Set(client, model.name);
-		char buf[4]; IntToString(selectedSkin[client], buf, sizeof(buf));
-		skinCookie.Set(client, buf);
+		cookieModel.Set(client, model.name);
+		cookieSkin.SetInt(client, menuSelection[client].skin);
 
 		PrintToChat(client, "\x07d9843fModel selected: \x07f5bf42%s", model.name);
 		
-		Call_StartForward(onModelChangedFwd);
+		Call_StartForward(fwdOnModelChanged);
 		Call_PushCell(client);
 		Call_PushString(model.name);
 		Call_Finish();
 	}
-	selectedMenuIndex[client] = -1;
-	delete hudInitTimer[client];
+
+	menuSelection[client].Reset();
 }
 
-void OnMenuModelSelected(int client)
+void OnMenuModelSelection(int client)
 {
 	StopSound(client, SNDCHAN_BODY, lastPlayedSound[client]);
 
 	PlayerModel model;
-	GetSelectedModel(client, model, true);
-	selectedMenuSkinCount[client] = model.skinCount;
+	Selection2Model(client, menuSelection[client], model);
+	menuSelection[client].skinCount = model.skinCount;
+	menuSelection[client].locked = IsModelLocked(model, client);
 	
-	if (IsModelLocked(model, client))
+	if (!menuSelection[client].locked)
 	{
-		selectedMenuIndexLocked[client] = true;
+		SoundPack soundPack;
+		model.GetSoundPack(soundPack);
+		PlayRandomSound(soundPack.viewSounds, client, _, SNDCHAN_BODY);
+	}
+
+	RefreshModel(client);
+	UpdateMenuHud(client, model);
+	ToggleMenuLock(client, menuSelection[client].locked);
+}
+
+void OnMenuSkinSelection(int client)
+{
+	if (menuSelection[client].locked)
+		return;
+	
+	PlayerModel model;
+	GetSelectedModel(client, model, true);
+	UpdateMenuHud(client, model, false);
+	RefreshModel(client);
+}
+
+void ToggleMenuLock(int client, bool enable)
+{
+	static int lockRef[MAXPLAYERS + 1] = {-1, ...};
+
+	if (enable)
+	{		
+		SetEntityEffects(client, GetEntityEffects(client) | EF_NODRAW | EF_NOSHADOW);
+		int weapon = Client_GetActiveWeapon(client);
+		if (weapon != -1)
+		{
+			SetEntityEffects(weapon, GetEntityEffects(weapon) | EF_NODRAW | EF_NOSHADOW);
+		}
+		
+		if (IsValidEntity(lockRef[client]))
+			return;
+
+		int entity = CreateEntityByName("prop_dynamic_override");
+		if (entity != -1)
+		{
+			char lockModel[PLATFORM_MAX_PATH];
+			cvLockModel.GetString(lockModel, sizeof(lockModel));
+			DispatchKeyValue(entity, "model", lockModel);
+			DispatchKeyValueFloat(entity, "modelscale", cvLockScale.FloatValue);
+			DispatchKeyValue(entity, "disableshadows", "1");
+			DispatchKeyValue(entity, "solid", "0");
+			
+			float eyePos[3];
+			GetClientEyePosition(client, eyePos);
+			DispatchKeyValueVector(entity, "origin", eyePos);
+
+			SetEntityOwner(entity, client);
+			SDKHook(entity, SDKHook_SetTransmit, Hook_TransmitToOwnerOnly);
+
+			DispatchSpawn(entity);
+			ActivateEntity(entity);
+			Entity_SetParent(entity, client);
+
+			lockRef[client] = EntIndexToEntRef(entity);
+		}
 	}
 	else
 	{
-		selectedMenuIndexLocked[client] = false;
-		SoundPack soundPack;
-		model.GetSoundPack(soundPack);
-		RefreshModel(client);
-		PlayRandomSound(soundPack.viewSounds, client, _, SNDCHAN_BODY);
-	}
-	UpdateMenuHud(client, model);
-}
-
-void OnMenuSkinSelected(int client)
-{
-	if (!selectedMenuIndexLocked[client])
-	{
-		PlayerModel model;
-		GetSelectedModel(client, model, true);
-		UpdateMenuHud(client, model, false);
-		RefreshModel(client);
+		SetEntityEffects(client, GetEntityEffects(client) & ~EF_NODRAW & ~EF_NOSHADOW);
+		int weapon = Client_GetActiveWeapon(client);
+		if (weapon != -1)
+		{
+			SetEntityEffects(weapon, GetEntityEffects(weapon) & ~EF_NODRAW & ~EF_NOSHADOW);
+		}
+		
+		if (!IsValidEntity(lockRef[client]))
+			return;
+		
+		RemoveEntity(lockRef[client]);
+		lockRef[client] = -1;
 	}
 }
 
@@ -999,26 +1121,38 @@ void UpdateMenuHud(int client, PlayerModel model, bool top = true, bool initital
 	if (hudInitTimer[client])
 		return;
 	
+	ClearHud(client, top, true);
+
 	static char text[128];
 
-	ClearHud(client, top, true);
 	if (top)
 	{
-		FormatEx(text, sizeof(text), selectedMenuIndexLocked[client]? "|LOCKED|" : model.name);
-		SetHudTextParamsEx(-1.0, 0.035, 60.0,  model.hudColor, {200, 200, 200, 200}, 1, 0.1, initital? 0.5 : 0.15, 0.15);
+		int color[4];
+		if (menuSelection[client].locked)
+		{
+			strcopy(text, sizeof(text), "?");
+			color = DEFAULT_HUD_COLOR;
+		}
+		else
+		{
+			strcopy(text, sizeof(text), model.name);
+			color = model.hudColor;
+		}
+
+		SetHudTextParamsEx(-1.0, 0.1, 60.0, color, {200, 200, 200, 200}, 1, 0.1, initital? 0.5 : 0.15, 0.15);
 		ShowHudText(client, topHudChanToggle[client], text);
 	}
 	
-	// BOTTOM
-	if (selectedMenuSkinCount[client] > 1 && !selectedMenuIndexLocked[client])
+	// Bottom
+	if (menuSelection[client].skinCount > 1 && !menuSelection[client].locked)
 	{
-		FormatEx(text, sizeof(text), "⇣ %d / %d ⇡\n", selectedMenuSkin[client] + 1, selectedMenuSkinCount[client]);
+		FormatEx(text, sizeof(text), "⇡ %6d / %-6d ⇣\n", menuSelection[client].skin + 1, menuSelection[client].skinCount);
 	}
 	else
 	{
-		text = "";
+		text = "\n";
 	}
-	Format(text, sizeof(text), "%s⮜ %d of %d ⮞", text, selectedMenuIndex[client] + 1, selectableModels[client].Length);
+	Format(text, sizeof(text), "%s⮜ %6d / %-6d ⮞", text, menuSelection[client].index + 1, selectableModels[client].Length);
 	SetHudTextParamsEx(-1.0, 0.9, 9999999.0, DEFAULT_HUD_COLOR, _, 1, 0.0, initital? 0.5 : 0.0, 1.0);
 	ShowHudText(client, bottomHudChanToggle[client], text);
 }
@@ -1038,12 +1172,30 @@ void ClearHud(int client, bool top = true, bool bottom = true)
 	}
 }
 
-public void Timer_UpdateMenuHud(Handle timer, int userId)
+public void Timer_MenuInit1(Handle timer, int userId)
 {
 	int client = GetClientOfUserId(userId);
+	hudInitTimer[client] = null;
+
 	if (client)
 	{
-		hudInitTimer[client] = null;
+		// Has to be delayed after the view angles have been snapped
+		if (mp_forcecamera)
+		{
+			mp_forcecamera.ReplicateToClient(client, "1");
+		}
+		hudInitTimer[client] = CreateTimer(0.7, Timer_MenuInit2, userId, TIMER_FLAG_NO_MAPCHANGE);
+	}
+}
+
+public void Timer_MenuInit2(Handle timer, int userId)
+{
+	int client = GetClientOfUserId(userId);
+	hudInitTimer[client] = null;
+
+	if (client)
+	{
+		// Start drawing the hud
 		PlayerModel model;
 		if (GetSelectedModel(client, model, true))
 		{
@@ -1056,14 +1208,15 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 {
 	if (0 < client <= MAXPLAYERS)
 	{
-		static int lastButtons[MAXPLAYERS+1];
-		if (selectedMenuIndex[client] != -1)
+		static int lastButtons[MAXPLAYERS + 1];
+		
+		if (menuSelection[client].index != -1)
 		{
 			if (!IsPlayerAlive(client))
 			{
 				ExitModelChooser(client, true);
 			}
-			else if ((buttons & IN_USE || buttons & IN_JUMP) && !selectedMenuIndexLocked[client])
+			else if ((buttons & IN_USE || buttons & IN_JUMP) && !menuSelection[client].locked)
 			{
 				ExitModelChooser(client);
 			}
@@ -1071,37 +1224,37 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 			{
 				if (buttons & IN_MOVELEFT && !(lastButtons[client] & IN_MOVELEFT))
 				{
-					if (--selectedMenuIndex[client] < 0)
+					if (--menuSelection[client].index < 0)
 					{
-						selectedMenuIndex[client] = selectableModels[client].Length - 1;
+						menuSelection[client].index = selectableModels[client].Length - 1;
 					}
-					selectedMenuSkin[client] = 0;
-					OnMenuModelSelected(client);
+					menuSelection[client].skin = 0;
+					OnMenuModelSelection(client);
 				}
 				if (buttons & IN_MOVERIGHT && !(lastButtons[client] & IN_MOVERIGHT))
 				{
-					if (++selectedMenuIndex[client] >= selectableModels[client].Length)
+					if (++menuSelection[client].index >= selectableModels[client].Length)
 					{
-						selectedMenuIndex[client] = 0;
+						menuSelection[client].index = 0;
 					}
-					selectedMenuSkin[client] = 0;
-					OnMenuModelSelected(client);
+					menuSelection[client].skin = 0;
+					OnMenuModelSelection(client);
 				}
 				if (buttons & IN_FORWARD && !(lastButtons[client] & IN_FORWARD))
 				{
-					if (--selectedMenuSkin[client] < 0)
+					if (--menuSelection[client].skin < 0)
 					{
-						selectedMenuSkin[client] = selectedMenuSkinCount[client] - 1;
+						menuSelection[client].skin = menuSelection[client].skinCount - 1;
 					}
-					OnMenuSkinSelected(client);
+					OnMenuSkinSelection(client);
 				}
 				if (buttons & IN_BACK && !(lastButtons[client] & IN_BACK))
 				{
-					if (++selectedMenuSkin[client] >= selectedMenuSkinCount[client])
+					if (++menuSelection[client].skin >= menuSelection[client].skinCount)
 					{
-						selectedMenuSkin[client] = 0;
+						menuSelection[client].skin = 0;
 					}
-					OnMenuSkinSelected(client);
+					OnMenuSkinSelection(client);
 				}
 			}
 		}
@@ -1110,7 +1263,7 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 }
 
 //------------------------------------------------------
-// Hurt sounds
+// Hurt/Death sounds
 //------------------------------------------------------
 
 public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast)
@@ -1151,7 +1304,7 @@ public Action CheckHealthRaise(Handle timer)
 
 public MRESReturn Hook_DeathSound(int client, DHookParam hParams)
 {
-	if (selectedMenuIndex[client] != -1 && !IsPlayerAlive(client))
+	if (menuSelection[client].index != -1 && !IsPlayerAlive(client))
 	{
 		ExitModelChooser(client, true);
 	}
@@ -1221,7 +1374,7 @@ public MRESReturn Hook_SetAnimation(int client, DHookParam hParams)
 		SetEntPropFloat(client, Prop_Data, "m_flPlaybackRate", playbackRate);
 		if (GetEntProp(client, Prop_Send, "m_nSequence") != sequence)
 		{
-			SDKCall(Func_ResetSequence, client, sequence);
+			SDKCall(callResetSequence, client, sequence);
 			SetEntPropFloat(client, Prop_Data, "m_flCycle", 0.0);
 		}
 		return MRES_Supercede;
@@ -1289,6 +1442,101 @@ int GetCustomSequenceForAnim(int client, PLAYER_ANIM playerAnim, float &playback
 		}
 	}
 	return -1;
+}
+
+//------------------------------------------------------
+// Bodygroup handling
+//------------------------------------------------------
+
+// Copy pasta of "SetBodygroup" from the SDK
+void CalcBodygroup(StudioHdr pStudioHdr, int& body, int iGroup, int iValue)
+{
+	if (!pStudioHdr)
+		return;
+
+	BodyPart pBodyPart = pStudioHdr.GetBodyPart(iGroup);
+	if (!pBodyPart.valid)
+		return;
+
+	int numModels = pBodyPart.nummodels;
+	if (iValue >= numModels)
+		return;
+
+	int base = pBodyPart.base;
+	int iCurrent = (body / base) % numModels;
+
+	body = (body - (iCurrent * base) + (iValue * base));
+}
+
+void ApplyEntityBodyGroupsFromString(int entity, const char[] str)
+{
+	if (str[0] == EOS)
+		return;
+	
+	StudioHdr pStudio = StudioHdr.FromEntity(entity);
+	if (!pStudio.valid)
+		return;
+
+	int numBodyParts = pStudio.numbodyparts;
+	int body = GetEntityBody(entity);
+
+	char buffer1[128], buffer2[128];
+	int strIndex, n;
+	for (int count = 0;; count++)
+	{
+		n = SplitString(str[strIndex], ";", buffer1, sizeof(buffer1));
+		TrimString(buffer1);
+		if (n == -1)
+		{
+			if (count)
+			{
+				LogError("Invalid bodygroup string: \"%s\"", str);
+				return;
+			}
+			else
+			{
+				// no separator found - assume raw body index specified
+				body = StringToInt(buffer1);
+				break;
+			}
+		}
+		strIndex += n;
+
+		n = SplitString(str[strIndex], ";", buffer2, sizeof(buffer2));
+		if (n == -1)
+		{
+			// copy remainder
+			strcopy(buffer2, sizeof(buffer2), str[strIndex]);
+		}
+		TrimString(buffer2);
+
+		// Convert buffers to actual indexes on the model
+
+		int bodyPartIndex = -1;
+		int subModelIndex = StringToInt(buffer2);
+		
+		for (int i = 0; i < numBodyParts; i++)
+		{
+			BodyPart pBodyPart = pStudio.GetBodyPart(i);
+			pBodyPart.GetName(buffer2, sizeof(buffer2));
+			if (StrEqual(buffer1, buffer2, false))
+			{
+				bodyPartIndex = i;
+				break;
+			}
+		}
+
+		if (bodyPartIndex != -1)
+			CalcBodygroup(pStudio, body, bodyPartIndex, subModelIndex);
+		
+		if (n == -1)
+		{
+			// end of list
+			break;
+		}
+		strIndex += n;
+	}
+	SetEntityBody(entity, body);
 }
 
 //------------------------------------------------------
@@ -1578,7 +1826,7 @@ bool PlayRandomSound(ArrayList soundList, int client, int entity = SOUND_FROM_PL
 	return false;
 }
 
-void PrecacheSounds(ArrayList soundList)
+void PrecacheSoundsInList(ArrayList soundList)
 {
 	int len = soundList.Length;
 	char path[PLATFORM_MAX_PATH];
@@ -1589,9 +1837,14 @@ void PrecacheSounds(ArrayList soundList)
 	}	
 }
 
-public Action BlockDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+public Action Hook_BlockDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
 	return Plugin_Handled;
+}
+
+Action Hook_TransmitToOwnerOnly(int entity, int client)
+{
+	return (Entity_GetOwner(entity) == client) ? Plugin_Continue : Plugin_Stop;
 }
 
 stock void LoadDHookDetour(GameData pGameConfig, DynamicDetour& pHandle, const char[] szFuncName, DHookCallback pCallbackPre = null, DHookCallback pCallbackPost = null)
@@ -1612,24 +1865,9 @@ stock void LoadDHookVirtual(GameData pGameConfig, DynamicHook& pHandle, const ch
 		SetFailState("Couldn't create hook %s", szFuncName);
 }
 
-// Copy pasta of "SetBodygroup" from the SDK
-void CalcBodygroup(StudioHdr pStudioHdr, int& body, int iGroup, int iValue)
+int GetEntityBody(int entity)
 {
-	if (!pStudioHdr)
-		return;
-
-	BodyPart pBodyPart = pStudioHdr.GetBodyPart(iGroup);
-	if (!pBodyPart.valid)
-		return;
-
-	int numModels = pBodyPart.nummodels;
-	if (iValue >= numModels)
-		return;
-
-	int base = pBodyPart.base;
-	int iCurrent = (body / base) % numModels;
-
-	body = (body - (iCurrent * base) + (iValue * base));
+	return GetEntProp(entity, Prop_Send, "m_nBody");
 }
 
 void SetEntityBody(int entity, int body)
@@ -1637,78 +1875,32 @@ void SetEntityBody(int entity, int body)
 	SetEntProp(entity, Prop_Send, "m_nBody", body);
 }
 
-int GetEntityBody(int entity)
+public int GetEntityEffects(int entity)
 {
-	return GetEntProp(entity, Prop_Send, "m_nBody");
+	return GetEntProp(entity, Prop_Data, "m_fEffects");
 }
 
-void ApplyEntityBodyGroupsFromString(int entity, const char[] str)
+public void SetEntityEffects(int entity, int effects)
 {
-	if (str[0] == EOS)
-		return;
-	
-	StudioHdr pStudio = StudioHdr.FromEntity(entity);
-	if (!pStudio.valid)
-		return;
+	SetEntProp(entity, Prop_Data, "m_fEffects", effects); 
+}
 
-	int numBodyParts = pStudio.numbodyparts;
-	int body = GetEntityBody(entity);
-
-	char buffer1[128], buffer2[128];
-	int strIndex, n;
-	for (int count = 0;; count++)
+/**
+ * HL2DM displays all carried weapons' shadows in thirdperson.
+ * We fix this to only show active weapon.
+ */
+void FixThirdpersonWeapons(int client)
+{
+	int activeWeapon = Client_GetActiveWeapon(client);
+	LOOP_CLIENTWEAPONS(client, weapon, index)
 	{
-		n = SplitString(str[strIndex], ";", buffer1, sizeof(buffer1));
-		TrimString(buffer1);
-		if (n == -1)
+		if (activeWeapon != weapon)
 		{
-			if (count)
-			{
-				LogError("Invalid bodygroup string: \"%s\"", str);
-				return;
-			}
-			else
-			{
-				// no separator found - assume raw body index specified
-				body = StringToInt(buffer1);
-				break;
-			}
+			SetEntityEffects(weapon, GetEntityEffects(weapon) | EF_NODRAW | EF_NOSHADOW);
 		}
-		strIndex += n;
-
-		n = SplitString(str[strIndex], ";", buffer2, sizeof(buffer2));
-		if (n == -1)
+		else
 		{
-			// copy remainder
-			strcopy(buffer2, sizeof(buffer2), str[strIndex]);
+			SetEntityEffects(weapon, GetEntityEffects(weapon) & ~EF_NODRAW & ~EF_NOSHADOW);
 		}
-		TrimString(buffer2);
-
-		// Convert buffers to actual indexes on the model
-
-		int bodyPartIndex = -1;
-		int subModelIndex = StringToInt(buffer2);
-		
-		for (int i = 0; i < numBodyParts; i++)
-		{
-			BodyPart pBodyPart = pStudio.GetBodyPart(i);
-			pBodyPart.GetName(buffer2, sizeof(buffer2));
-			if (StrEqual(buffer1, buffer2, false))
-			{
-				bodyPartIndex = i;
-				break;
-			}
-		}
-
-		if (bodyPartIndex != -1)
-			CalcBodygroup(pStudio, body, bodyPartIndex, subModelIndex);
-		
-		if (n == -1)
-		{
-			// end of list
-			break;
-		}
-		strIndex += n;
 	}
-	SetEntityBody(entity, body);
 }

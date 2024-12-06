@@ -4,7 +4,7 @@
 	{
 		"Functions"
 		{
-			"CBaseEntity::SetModel_" // crashy name (><)
+			"CBaseEntity::SetModel"
 			{
 				"offset"	"CBaseEntity::SetModel"
 				"hooktype"	"entity"
