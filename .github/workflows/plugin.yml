@@ -65,6 +65,7 @@ jobs:
           OUT="/tmp/build"
           SM="${OUT}/addons/sourcemod"
           mkdir -p $SM/configs
+          cp -R game/. $OUT
           cp -R plugins $SM
           cp -R scripting $SM
           cp -R gamedata $SM

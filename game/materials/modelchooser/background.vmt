@@ -1,0 +1,17 @@
+"UnlitGeneric"
+{
+	"$basetexture" "modelchooser/background"
+	"$translucent" "1"
+	"$distancealpha" "1"
+	
+	// Bar edges
+	$softedges		1
+	$edgesoftnessstart	.1
+	$edgesoftnessend	0
+	$scaleedgesoftnessbasedonscreenres 1
+
+	// Bar color & alpha (only with softedges)
+	$outline 1
+	$outlinecolor "{0 0 0}"
+	$outlinealpha "0.98"
+}
