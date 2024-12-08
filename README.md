@@ -1,7 +1,7 @@
 [![CI](https://github.com/Alienmario/ModelChooser/actions/workflows/plugin.yml/badge.svg)](https://github.com/Alienmario/ModelChooser/actions/workflows/plugin.yml)
 
-# ModelChooser
- A better model chooser for Sourcemod.
+# Ultimate ModelChooser
+ A "**_better_**" player model chooser for Sourcemod.
 
 #### Features
 - Third-person model browser
@@ -9,7 +9,7 @@
 - Supports skins and bodygroups
 - Persistence via cookies
 - Extensive configuration
-- Admin only and locked models
+- Admin only, team-based and locked models
 - Fully automatic downloads
 - Scripting API
 
@@ -34,12 +34,15 @@
 Type !models to enter. Press movement keys to browse. Press use or jump to exit.
 
 #### Config
-- **modelchooser_immunity** (0/1) Whether players are immune to damage when selecting models. Default: `0`
-- **modelchooser_autoreload** (0/1) Whether to reload the model list on mapchanges. Default: `0`
-- **modelchooser_sound** Menu click sound (auto downloads supported), empty to disable. Default: `ui/buttonclickrelease.wav`
-- **modelchooser_overlay** Screen overlay material to show when choosing models (auto downloads supported), empty to disable. Default: `modelchooser/background`
-- **modelchooser_lock_model** Model to display for locked playermodels (auto downloads supported). Default: `models/props_wasteland/prison_padlock001a.mdl`
-- **modelchooser_lock_scale** Scale of the lock model. Default: `5.0`
+| Convar | Default | Description |
+| --- | --- | --- |
+| **modelchooser_immunity** | `0` | (0/1) Whether players are immune to damage when selecting models |
+| **modelchooser_autoreload** | `0` | (0/1) Whether to reload the model list on mapchanges |
+| **modelchooser_teambased** | `2` | Configures model restrictions in teamplay mode<br> 0 = Do not enforce any team restrictions<br> 1 = Enforce configured team restrictions, allows picking unrestricted models<br> 2 = Strictly enforce teams, only allows models with matching teams |
+| **modelchooser_sound** | `ui/buttonclickrelease.wav` | Menu click sound (auto downloads supported), empty to disable |
+| **modelchooser_overlay** | `modelchooser/background` | Screen overlay material to show when choosing models (auto downloads supported), empty to disable |
+| **modelchooser_lock_model** | `models/props_wasteland/prison_padlock001a.mdl` | Model to display for locked playermodels (auto downloads supported) |
+| **modelchooser_lock_scale** | `5.0` | Scale of the lock model |
 
 #### Admin commands
 - **sm_unlockmodel** Unlock a locked model by name for a player

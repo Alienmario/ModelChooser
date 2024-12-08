@@ -8,7 +8,7 @@
 public SharedPlugin __pl_model_chooser = 
 {
     name = MODELCHOOSER_LIBRARY,
-    file = "model_chooser_2020.smx",
+    file = "ultimate_modelchooser.smx",
 #if defined REQUIRE_PLUGIN
     required = 1,
 #else

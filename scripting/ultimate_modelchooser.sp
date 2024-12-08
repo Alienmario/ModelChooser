@@ -15,7 +15,7 @@
 
 public Plugin myinfo =
 {
-	name = "Playermodel chooser",
+	name = "Ultimate modelchooser",
 	author = "Alienmario",
 	description = "The enhanced playermodel system",
 	version = PLUGIN_VERSION,
@@ -199,6 +199,7 @@ enum struct PlayerModel
 	SoundParams jumpSndParams;
 	Interval hurtSndHP;
 	int hudColor[4];
+	int team;
 
 	ArrayList skins;
 	ArrayList bodyGroups;
@@ -329,6 +330,38 @@ enum struct SelectionData
 	}
 }
 
+enum struct PersistentPreferences
+{
+	int team;
+	Cookie model;
+	Cookie skin;
+	Cookie body;
+
+	void Init(int team)
+	{
+		if (this.model)
+			return;
+
+		this.team = team;
+		
+		char name[32];
+		char suffix[4];
+		if (team > TEAM_SPECTATOR)
+		{
+			FormatEx(suffix, sizeof(suffix), "#%d", team);
+		}
+
+		FormatEx(name, sizeof(name), "playermodel%s", suffix);
+		this.model = new Cookie(name, "Stores player model preference", CookieAccess_Protected);
+
+		FormatEx(name, sizeof(name), "playermodel_skin%s", suffix);
+		this.skin = new Cookie(name, "Stores player model skin type preference", CookieAccess_Protected);
+
+		FormatEx(name, sizeof(name), "playermodel_body%s", suffix);
+		this.body = new Cookie(name, "Stores player model body type preference", CookieAccess_Protected);
+	}
+}
+
 //------------------------------------------------------
 // Variables
 //------------------------------------------------------
@@ -367,6 +400,9 @@ int bottomHudChanToggle[MAXPLAYERS + 1] = {2, ...};
 // Delayed hud init timer
 Handle tMenuInit[MAXPLAYERS + 1];
 
+// Team number cached from changeteam event hook
+int currentTeam[MAXPLAYERS + 1];
+
 // Downloads fileset
 SmartDM_FileSet downloads;
 
@@ -378,10 +414,8 @@ DynamicHook hkSetAnimation;
 // Calls
 Handle callResetSequence;
 
-// Cookies
-Cookie cookieModel;
-Cookie cookieSkin;
-Cookie cookieBody;
+// Persistence
+PersistentPreferences persistentPreferences[MAX_TEAMS];
 
 // Forwards
 GlobalForward fwdOnModelChanged;
@@ -393,6 +427,7 @@ ConVar cvOverlay;
 ConVar cvLockModel;
 ConVar cvLockScale;
 ConVar cvMenuSnd;
+ConVar cvTeamBased;
 ConVar mp_forcecamera;
 
 //------------------------------------------------------
@@ -485,9 +520,7 @@ public void OnPluginStart()
 	modelList = new ModelList();
 	soundMap = new SoundMap();
 	downloads = new SmartDM_FileSet();
-	cookieModel = new Cookie("playermodel", "Stores player model preference", CookieAccess_Protected);
-	cookieSkin = new Cookie("playermodel_skin", "Stores player model skin type preference", CookieAccess_Protected);
-	cookieBody = new Cookie("playermodel_body", "Stores player model body type preference", CookieAccess_Protected);
+	persistentPreferences[TEAM_UNASSIGNED].Init(TEAM_UNASSIGNED);
 	
 	fwdOnModelChanged = new GlobalForward("ModelChooser_OnModelChanged", ET_Ignore, Param_Cell, Param_String);
 	
@@ -500,11 +533,14 @@ public void OnPluginStart()
 
 	cvSelectionImmunity = CreateConVar("modelchooser_immunity", "0", "Whether players are immune to damage when selecting models", _, true, 0.0, true, 1.0);
 	cvAutoReload = CreateConVar("modelchooser_autoreload", "0", "Whether to reload the model list on mapchanges", _, true, 0.0, true, 1.0);
+	cvTeamBased = CreateConVar("modelchooser_teambased", "2", "Configures model restrictions in teamplay mode\n 0 = Do not enforce any team restrictions\n 1 = Enforce configured team restrictions, allows picking unrestricted models\n 2 = Strictly enforce teams, only allows models with matching teams", _, true, 0.0, true, 2.0);
 	cvMenuSnd = CreateConVar("modelchooser_sound", "ui/buttonclickrelease.wav", "Menu click sound (auto downloads supported), empty to disable");
 	cvOverlay = CreateConVar("modelchooser_overlay", "modelchooser/background", "Screen overlay material to show when choosing models (auto downloads supported), empty to disable");
 	cvLockModel = CreateConVar("modelchooser_lock_model", "models/props_wasteland/prison_padlock001a.mdl", "Model to display for locked playermodels (auto downloads supported)");
 	cvLockScale = CreateConVar("modelchooser_lock_scale", "5.0", "Scale of the lock model", _, true, 0.1);
 	mp_forcecamera = FindConVar("mp_forcecamera");
+
+	cvTeamBased.AddChangeHook(Hook_TeamBasedCvarChanged);
 	
 	UserMsg hudMsgId = GetUserMessageId("HudMsg");
 	if (hudMsgId != INVALID_MESSAGE_ID)
@@ -513,6 +549,7 @@ public void OnPluginStart()
 	}
 	HookEvent("player_hurt", Event_PlayerHurt, EventHookMode_Post);
 	HookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
+	HookEvent("player_team", Event_PlayerTeam, EventHookMode_Post);
 	CreateTimer(2.0, CheckHealthRaise, _, TIMER_REPEAT);
 	
 	GameData gamedata = new GameData("modelchooser");
@@ -591,21 +628,18 @@ public void OnConfigsExecuted()
 
 public void OnClientConnected(int client)
 {
-	delete selectableModels[client];
-	delete unlockedModels[client];
+	ResetClientModels(client);
+	ResetUnlockedModels(client);
 	delete tMenuInit[client];
-	unlockedModels[client] = new StringMap();
-	activeSelection[client].Reset();
-	menuSelection[client].Reset();
-	playedHurtSoundAt[client] = -1;
 	clientInitChecks[client] = 3;
-	nextJumpSound[client] = 0.0;
+	currentTeam[client] = 0;
 }
 
 public void OnClientPutInServer(int client)
 {
 	if (!IsFakeClient(client))
 	{
+		currentTeam[client] = GetClientTeam(client);
 		DHookEntity(hkSetModel, false, client, _, Hook_SetModel);
 		DHookEntity(hkDeathSound, false, client, _, Hook_DeathSound);
 		DHookEntity(hkSetAnimation, false, client, _, Hook_SetAnimation);
@@ -625,6 +659,26 @@ public void OnClientCookiesCached(int client)
 {
 	if (!--clientInitChecks[client])
 		InitClientModels(client);
+}
+
+public void Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
+{
+	if (event.GetBool("disconnect"))
+		return;
+	
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (client)
+	{
+		int oldTeam = event.GetInt("oldteam");
+		int team = currentTeam[client] = event.GetInt("team");
+		if (team != oldTeam)
+		{
+			if (team == TEAM_UNASSIGNED || team > TEAM_SPECTATOR)
+			{
+				ReloadClientModels(client);
+			}
+		}
+	}
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -756,6 +810,15 @@ public Action Command_LockModel(int client, int args)
 	return Plugin_Handled;
 }
 
+void Hook_TeamBasedCvarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (IsClientInGame(i) && !IsFakeClient(i))
+			ReloadClientModels(i);
+	}
+}
+
 //------------------------------------------------------
 // Core functions
 //------------------------------------------------------
@@ -811,6 +874,205 @@ void RefreshModel(int client)
 	}
 }
 
+void ResetClientModels(int client)
+{
+	delete selectableModels[client];
+	activeSelection[client].Reset();
+	menuSelection[client].Reset();
+	playedHurtSoundAt[client] = -1;
+	nextJumpSound[client] = 0.0;
+}
+
+void ReloadClientModels(int client)
+{
+	if (!selectableModels[client])
+		return;
+	
+	if (IsInMenu(client))
+	{
+		ExitModelChooser(client, true, true);
+	}
+	ResetClientModels(client);
+	InitClientModels(client);
+}
+
+void InitClientModels(int client)
+{
+	if (selectableModels[client])
+		return;
+
+	selectableModels[client] = BuildSelectableModels(client);
+	if (!selectableModels[client].Length)
+		return;
+	
+	PersistentPreferences prefs;
+	prefs = GetPreferences(client);
+
+	char modelName[MAX_MODELNAME];
+	prefs.model.Get(client, modelName, sizeof(modelName));
+
+	// first select by team based preferences
+	if (SelectModelByName(client, modelName, prefs.skin.GetInt(client), prefs.body.GetInt(client)))
+		return;
+
+	// if we failed picking by team, try the no-team preferences
+	if (prefs.team != 0)
+	{
+		prefs = GetPreferencesByTeam(0);
+		prefs.model.Get(client, modelName, sizeof(modelName));
+		if (SelectModelByName(client, modelName, prefs.skin.GetInt(client), prefs.body.GetInt(client)))
+			return;
+	}
+
+	// no selectable preferences, pick a default
+	SelectDefaultModel(client);
+}
+
+ArrayList BuildSelectableModels(int client)
+{
+	ArrayList list = new ArrayList();
+	for (int i = 0; i < modelList.Length; i++)
+	{
+		PlayerModel model;
+		modelList.GetArray(i, model);
+
+		if (model.adminBitFlags != -1)
+		{
+			int clientFlags = GetUserFlagBits(client);
+			if (!(clientFlags & ADMFLAG_ROOT || clientFlags & model.adminBitFlags))
+				continue;
+		}
+
+		if (currentTeam[client] > TEAM_SPECTATOR && currentTeam[client] != model.team)
+		{
+			if (cvTeamBased.IntValue == 2)
+				continue;
+			if (cvTeamBased.IntValue == 1 && model.team > TEAM_SPECTATOR)
+				continue;
+		}
+
+		list.Push(i);
+	}
+	return list;
+}
+
+bool SelectModelByName(int client, const char[] modelName, int skin = 0, int body = 0)
+{
+	PlayerModel model;
+	int index = modelList.FindByName(modelName, model);
+	if (index != -1)
+	{
+		int clIndex = selectableModels[client].FindValue(index);
+		if (clIndex != -1 && !IsModelLocked(model, client))
+		{
+			activeSelection[client].index = clIndex;
+			activeSelection[client].skin = model.IndexOfSkin(skin);
+			activeSelection[client].body = model.IndexOfBody(body);
+			RefreshModel(client);
+			CallModelChanged(client, model);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool SelectDefaultModel(int client)
+{
+	if (!selectableModels[client].Length)
+		return false;
+	
+	// find models with the highest prio
+	// select random if there are multiple
+	int maxPrio = cellmin;
+	ArrayList maxPrioList = new ArrayList();
+	
+	for (int i = 0; i < selectableModels[client].Length; i++)
+	{
+		PlayerModel model;
+		modelList.GetArray(selectableModels[client].Get(i), model);
+		
+		if (IsModelLocked(model, client))
+			continue;
+		
+		if (model.defaultPrio > maxPrio)
+		{
+			maxPrio = model.defaultPrio;
+			maxPrioList.Clear();
+			maxPrioList.Push(i);
+		}
+		else if (model.defaultPrio == maxPrio)
+		{
+			maxPrioList.Push(i);
+		}
+	}
+	
+	if (maxPrioList.Length)
+	{
+		activeSelection[client].index = maxPrioList.Get(Math_GetRandomInt(0, maxPrioList.Length - 1));
+
+		PlayerModel model;
+		Selection2Model(client, activeSelection[client], model);
+		RefreshModel(client);
+		CallModelChanged(client, model);
+		delete maxPrioList;
+		return true;
+	}
+
+	delete maxPrioList;
+	return false;
+}
+
+void CallModelChanged(int client, PlayerModel model)
+{
+	Call_StartForward(fwdOnModelChanged);
+	Call_PushCell(client);
+	Call_PushString(model.name);
+	Call_Finish();
+}
+
+bool IsModelLocked(PlayerModel model, int client)
+{
+	return (model.locked && !unlockedModels[client].GetValue(model.name, client));
+}
+
+void UnlockModel(int client, char modelName[MAX_MODELNAME])
+{
+	unlockedModels[client].SetValue(modelName, true);
+}
+
+void LockModel(int client, char modelName[MAX_MODELNAME])
+{
+	unlockedModels[client].Remove(modelName);
+}
+
+void ResetUnlockedModels(int client)
+{
+	delete unlockedModels[client];
+	unlockedModels[client] = new StringMap();
+}
+
+PersistentPreferences GetPreferences(int client)
+{
+	int team = currentTeam[client];
+	if (team <= TEAM_SPECTATOR || !cvTeamBased.BoolValue)
+	{
+		team = 0;
+	}
+	return GetPreferencesByTeam(team);
+}
+
+PersistentPreferences GetPreferencesByTeam(int team)
+{
+	PersistentPreferences prefs;
+	prefs = persistentPreferences[team];
+	prefs.Init(team);
+	return prefs;
+}
+
+//------------------------------------------------------
+// Viewmodels
+//------------------------------------------------------
+
 public MRESReturn Hook_SetViewModelModel(int vm, DHookParam hParams)
 {
 	RequestFrame(UpdateViewModel, EntIndexToEntRef(vm));
@@ -847,129 +1109,14 @@ void UpdateViewModel(int vm)
 	}
 }
 
-void InitClientModels(int client)
-{
-	if (selectableModels[client])
-		return;
-
-	selectableModels[client] = BuildSelectableModels(client);
-	if (!selectableModels[client].Length)
-		return;
-	
-	char modelName[MAX_MODELNAME];
-	cookieModel.Get(client, modelName, sizeof(modelName));
-	if (!SelectModelByName(client, modelName, cookieSkin.GetInt(client), cookieBody.GetInt(client)))
-	{
-		if (!SelectDefaultModel(client, modelName))
-		{
-			return;
-		}
-	}
-
-	Call_StartForward(fwdOnModelChanged);
-	Call_PushCell(client);
-	Call_PushString(modelName);
-	Call_Finish();
-}
-
-ArrayList BuildSelectableModels(int client)
-{
-	ArrayList list = new ArrayList();
-	for (int i = 0; i < modelList.Length; i++)
-	{
-		PlayerModel model; modelList.GetArray(i, model);
-		if (model.adminBitFlags != -1)
-		{
-			int clientFlags = GetUserFlagBits(client);
-			if (!(clientFlags & ADMFLAG_ROOT || clientFlags & model.adminBitFlags))
-				continue;
-		}
-		list.Push(i);
-	}
-	return list;
-}
-
-bool SelectModelByName(int client, const char[] modelName, int skin = 0, int body = 0)
-{
-	PlayerModel model;
-	int index = modelList.FindByName(modelName, model);
-	if (index != -1)
-	{
-		int clIndex = selectableModels[client].FindValue(index);
-		if (clIndex != -1 && !IsModelLocked(model, client))
-		{
-			activeSelection[client].index = clIndex;
-			activeSelection[client].skin = model.IndexOfSkin(skin);
-			activeSelection[client].body = model.IndexOfBody(body);
-			RefreshModel(client);
-			return true;
-		}
-	}
-	return false;
-}
-
-bool SelectDefaultModel(int client, char selectedName[MAX_MODELNAME] = "")
-{
-	if (!selectableModels[client].Length)
-		return false;
-	
-	// find models with the highest prio
-	// select random if there are multiple
-	int maxPrio = cellmin;
-	ArrayList maxPrioList = new ArrayList();
-	
-	for (int i = 0; i < selectableModels[client].Length; i++)
-	{
-		PlayerModel model; modelList.GetArray(selectableModels[client].Get(i), model);
-		if (IsModelLocked(model, client))
-			continue;
-		
-		if (model.defaultPrio > maxPrio)
-		{
-			maxPrio = model.defaultPrio;
-			maxPrioList.Clear();
-			maxPrioList.Push(i);
-		}
-		else if (model.defaultPrio == maxPrio)
-		{
-			maxPrioList.Push(i);
-		}
-	}
-	
-	if (maxPrioList.Length)
-	{
-		activeSelection[client].index = maxPrioList.Get(Math_GetRandomInt(0, maxPrioList.Length - 1));
-
-		PlayerModel model;
-		Selection2Model(client, activeSelection[client], model);
-		RefreshModel(client);
-		selectedName = model.name;
-		delete maxPrioList;
-		return true;
-	}
-
-	delete maxPrioList;
-	return false;
-}
-
-bool IsModelLocked(PlayerModel model, int client)
-{
-	return (model.locked && !unlockedModels[client].GetValue(model.name, client));
-}
-
-void UnlockModel(int client, char modelName[MAX_MODELNAME])
-{
-	unlockedModels[client].SetValue(modelName, true);
-}
-
-void LockModel(int client, char modelName[MAX_MODELNAME])
-{
-	unlockedModels[client].Remove(modelName);
-}
-
 //------------------------------------------------------
 // Third-Person Model chooser menu
 //------------------------------------------------------
+
+bool IsInMenu(int client)
+{
+	return (menuSelection[client].index != -1);
+}
 
 bool PreEnterCheck(int client)
 {
@@ -987,7 +1134,7 @@ bool PreEnterCheck(int client)
 		PrintToChat(client, "[ModelChooser] You need to be alive to use models.");
 		return false;
 	}
-	if (menuSelection[client].index != -1)
+	if (IsInMenu(client))
 	{
 		PrintToChat(client, "[ModelChooser] You are already changing models, dummy :]");
 		return false;
@@ -1043,7 +1190,7 @@ void EnterModelChooser(int client)
 	OnMenuModelSelection(client, true);
 }
 
-void ExitModelChooser(int client, bool silent = false)
+void ExitModelChooser(int client, bool silent = false, bool cancel = false)
 {
 	Client_SetObserverTarget(client, -1);
 	Client_SetObserverMode(client, OBS_MODE_NONE, false);
@@ -1063,7 +1210,7 @@ void ExitModelChooser(int client, bool silent = false)
 	delete tMenuInit[client];
 	
 	PlayerModel model;
-	if (menuSelection[client].IsValid() && Selection2Model(client, menuSelection[client], model))
+	if (!cancel && menuSelection[client].IsValid() && Selection2Model(client, menuSelection[client], model))
 	{
 		if (!silent)
 		{
@@ -1074,9 +1221,10 @@ void ExitModelChooser(int client, bool silent = false)
 		
 		activeSelection[client] = menuSelection[client];
 		
-		cookieModel.Set(client, model.name);
-		cookieSkin.SetInt(client, model.GetSkin(menuSelection[client].skin));
-		cookieBody.SetInt(client, model.GetBody(menuSelection[client].body));
+		PersistentPreferences prefs; prefs = GetPreferences(client);
+		prefs.model.Set(client, model.name);
+		prefs.skin.SetInt(client, model.GetSkin(menuSelection[client].skin));
+		prefs.body.SetInt(client, model.GetBody(menuSelection[client].body));
 
 		PrintToChat(client, "\x07d9843fModel selected: \x07f5bf42%s", model.name);
 		
@@ -1340,7 +1488,7 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 	
 	static int lastButtons[MAXPLAYERS + 1];
 	
-	if (menuSelection[client].index != -1)
+	if (IsInMenu(client))
 	{
 		if (!IsPlayerAlive(client))
 		{
@@ -1410,6 +1558,7 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 			}
 		}
 	}
+
 	lastButtons[client] = buttons;
 }
 
@@ -1419,11 +1568,11 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 
 public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = GetClientOfUserId(GetEventInt(event, "userid"));
-	if (playedHurtSoundAt[client] != -1 || GetClientTeam(client) == 1)
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (playedHurtSoundAt[client] != -1 || currentTeam[client] == 1)
 		return;
 	
-	int health = GetEventInt(event, "health");
+	int health = event.GetInt("health");
 
 	PlayerModel model;
 	if (GetSelectedModelAuto(client, model))
@@ -1482,7 +1631,7 @@ public MRESReturn Hook_DeathSound(int client, DHookParam hParams)
 
 public void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = GetClientOfUserId(GetEventInt(event, "userid"));
+	int client = GetClientOfUserId(event.GetInt("userid"));
 	if (client)
 	{
 		int m_hRagdoll = GetEntPropEnt(client, Prop_Send, "m_hRagdoll");
@@ -1595,100 +1744,6 @@ int GetCustomSequenceForAnim(int client, PLAYER_ANIM playerAnim, float &playback
 }
 
 //------------------------------------------------------
-// Bodygroup handling
-//------------------------------------------------------
-
-// Copy pasta of "SetBodygroup" from the SDK
-void CalcBodygroup(StudioHdr pStudioHdr, int& body, int iGroup, int iValue)
-{
-	if (!pStudioHdr)
-		return;
-
-	BodyPart pBodyPart = pStudioHdr.GetBodyPart(iGroup);
-	if (!pBodyPart.valid)
-		return;
-
-	int numModels = pBodyPart.nummodels;
-	if (iValue >= numModels)
-		return;
-
-	int base = pBodyPart.base;
-	int iCurrent = (body / base) % numModels;
-
-	body = (body - (iCurrent * base) + (iValue * base));
-}
-
-void ApplyEntityBodyGroupsFromString(int entity, const char[] str)
-{
-	if (str[0] == EOS)
-		return;
-	
-	StudioHdr pStudio = StudioHdr.FromEntity(entity);
-	if (!pStudio.valid)
-		return;
-
-	int numBodyParts = pStudio.numbodyparts;
-	int body = GetEntityBody(entity);
-
-	char buffer1[128], buffer2[128];
-	for (int count, strIndex, n;; count++)
-	{
-		n = SplitString(str[strIndex], ";", buffer1, sizeof(buffer1));
-		TrimString(buffer1);
-		if (n == -1)
-		{
-			if (count)
-			{
-				LogError("Invalid bodygroup string: \"%s\"", str);
-				return;
-			}
-			else
-			{
-				// no separator found - assume raw body index specified
-				body = StringToInt(buffer1);
-				break;
-			}
-		}
-		strIndex += n;
-
-		n = SplitString(str[strIndex], ";", buffer2, sizeof(buffer2));
-		if (n == -1)
-		{
-			// copy remainder
-			strcopy(buffer2, sizeof(buffer2), str[strIndex]);
-		}
-		TrimString(buffer2);
-
-		// Convert buffers to actual indexes on the model
-
-		int bodyPartIndex = -1;
-		int subModelIndex = StringToInt(buffer2);
-		
-		for (int i = 0; i < numBodyParts; i++)
-		{
-			BodyPart pBodyPart = pStudio.GetBodyPart(i);
-			pBodyPart.GetName(buffer2, sizeof(buffer2));
-			if (StrEqual(buffer1, buffer2, false))
-			{
-				bodyPartIndex = i;
-				break;
-			}
-		}
-
-		if (bodyPartIndex != -1)
-			CalcBodygroup(pStudio, body, bodyPartIndex, subModelIndex);
-		
-		if (n == -1)
-		{
-			// end of list
-			break;
-		}
-		strIndex += n;
-	}
-	SetEntityBody(entity, body);
-}
-
-//------------------------------------------------------
 // Config parsing
 //------------------------------------------------------
 
@@ -1745,7 +1800,7 @@ void ParseModels(KeyValues kv)
 					SetFailState("Duplicate model name: %s", model.name);
 
 				kv.GetString("path", model.path, sizeof(model.path));
-				if (model.path[0] == '\0')
+				if (model.path[0] == EOS)
 					continue;
 
 				SmartDM.AddEx(model.path, downloads, true, true);
@@ -1771,6 +1826,7 @@ void ParseModels(KeyValues kv)
 				
 				model.locked = !!kv.GetNum("locked", 0);
 				model.defaultPrio = kv.GetNum("defaultprio");
+				
 				if (kv.GetDataType("hudcolor") != KvData_None)
 				{
 					kv.GetColor4("hudcolor", model.hudColor);
@@ -1781,7 +1837,14 @@ void ParseModels(KeyValues kv)
 				}
 
 				kv.GetString("adminflags", buffer, sizeof(buffer), "-1");
-				model.adminBitFlags = StrEqual(buffer, "-1")? -1 : ReadFlagString(buffer);
+				model.adminBitFlags = StrEqual(buffer, "-1") ? -1 : ReadFlagString(buffer);
+
+				kv.GetString("team", buffer, sizeof(buffer), "0");
+				model.team = String_IsNumeric(buffer) ? StringToInt(buffer) : FindTeamByName(buffer);
+				if (model.team < 0 || model.team >= MAX_TEAMS)
+				{
+					model.team = 0;
+				}
 
 				if (kv.GetDataType("downloads") == KvData_None && kv.JumpToKey("downloads"))
 				{
@@ -1791,7 +1854,8 @@ void ParseModels(KeyValues kv)
 								
 				modelList.PushArray(model);
 			}
-		} while (kv.GotoNextKey());
+		}
+		while (kv.GotoNextKey());
 		kv.GoBack();
 	}
 	delete duplicityChecker;
@@ -1940,11 +2004,11 @@ ArrayList ParseFileItems(KeyValues kv, bool precache, const char[] folderType = 
 		do
 		{
 			kv.GetString(NULL_STRING, path, sizeof(path));
-			if (path[0] == '\0')
+			if (path[0] == EOS)
 				continue;
 			
 			files.PushString(path);
-			if (folderType[0] != '\0')
+			if (folderType[0] != EOS)
 			{
 				Format(path, sizeof(path), "%s/%s", folderType, path);
 			}
@@ -2085,6 +2149,76 @@ ArrayList ProcessBodyGroups(StudioHdr studio, ArrayList list)
 	return list;
 }
 
+void ApplyEntityBodyGroupsFromString(int entity, const char[] str)
+{
+	if (str[0] == EOS)
+		return;
+	
+	StudioHdr pStudio = StudioHdr.FromEntity(entity);
+	if (!pStudio.valid)
+		return;
+
+	int numBodyParts = pStudio.numbodyparts;
+	int body = GetEntityBody(entity);
+
+	char buffer1[128], buffer2[128];
+	for (int count, strIndex, n;; count++)
+	{
+		n = SplitString(str[strIndex], ";", buffer1, sizeof(buffer1));
+		TrimString(buffer1);
+		if (n == -1)
+		{
+			if (count)
+			{
+				LogError("Invalid bodygroup string: \"%s\"", str);
+				return;
+			}
+			else
+			{
+				// no separator found - assume raw body index specified
+				body = StringToInt(buffer1);
+				break;
+			}
+		}
+		strIndex += n;
+
+		n = SplitString(str[strIndex], ";", buffer2, sizeof(buffer2));
+		if (n == -1)
+		{
+			// copy remainder
+			strcopy(buffer2, sizeof(buffer2), str[strIndex]);
+		}
+		TrimString(buffer2);
+
+		// Convert buffers to actual indexes on the model
+
+		int bodyPartIndex = -1;
+		int subModelIndex = StringToInt(buffer2);
+		
+		for (int i = 0; i < numBodyParts; i++)
+		{
+			BodyPart pBodyPart = pStudio.GetBodyPart(i);
+			pBodyPart.GetName(buffer2, sizeof(buffer2));
+			if (StrEqual(buffer1, buffer2, false))
+			{
+				bodyPartIndex = i;
+				break;
+			}
+		}
+
+		if (bodyPartIndex != -1)
+			CalcBodygroup(pStudio, body, bodyPartIndex, subModelIndex);
+		
+		if (n == -1)
+		{
+			// end of list
+			break;
+		}
+		strIndex += n;
+	}
+	SetEntityBody(entity, body);
+}
+
 //------------------------------------------------------
 // Utils
 //------------------------------------------------------
@@ -2199,4 +2333,24 @@ stock void FixThirdpersonWeapons(int client)
 			SetEntityEffects(weapon, GetEntityEffects(weapon) & ~EF_NODRAW & ~EF_NOSHADOW);
 		}
 	}
+}
+
+// Copy pasta of "SetBodygroup" from the SDK
+stock void CalcBodygroup(StudioHdr pStudioHdr, int& body, int iGroup, int iValue)
+{
+	if (!pStudioHdr)
+		return;
+
+	BodyPart pBodyPart = pStudioHdr.GetBodyPart(iGroup);
+	if (!pBodyPart.valid)
+		return;
+
+	int numModels = pBodyPart.nummodels;
+	if (iValue >= numModels)
+		return;
+
+	int base = pBodyPart.base;
+	int iCurrent = (body / base) % numModels;
+
+	body = (body - (iCurrent * base) + (iValue * base));
 }
