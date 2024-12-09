@@ -20,7 +20,7 @@
 > If you need other games without the custom gamedata requirement, try the **v1 legacy version**.
 
 ## Installation
-1. Download latest version from the releases page
+1. Download latest version from the [releases page](https://github.com/Alienmario/ModelChooser/releases)
 2. Unpack it in your gameroot folder (hl2mp, bms, ...)
 3. Done!
 
