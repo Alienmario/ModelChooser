@@ -1500,21 +1500,24 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 		}
 		else
 		{
-			if (buttons & IN_MOVELEFT && !(lastButtons[client] & IN_MOVELEFT))
+			if (selectableModels[client].Length > 1)
 			{
-				if (--menuSelection[client].index < 0)
+				if (buttons & IN_MOVELEFT && !(lastButtons[client] & IN_MOVELEFT))
 				{
-					menuSelection[client].index = selectableModels[client].Length - 1;
+					if (--menuSelection[client].index < 0)
+					{
+						menuSelection[client].index = selectableModels[client].Length - 1;
+					}
+					OnMenuModelSelection(client);
 				}
-				OnMenuModelSelection(client);
-			}
-			if (buttons & IN_MOVERIGHT && !(lastButtons[client] & IN_MOVERIGHT))
-			{
-				if (++menuSelection[client].index >= selectableModels[client].Length)
+				if (buttons & IN_MOVERIGHT && !(lastButtons[client] & IN_MOVERIGHT))
 				{
-					menuSelection[client].index = 0;
+					if (++menuSelection[client].index >= selectableModels[client].Length)
+					{
+						menuSelection[client].index = 0;
+					}
+					OnMenuModelSelection(client);
 				}
-				OnMenuModelSelection(client);
 			}
 
 			if (menuSelection[client].skinCount > 1)
