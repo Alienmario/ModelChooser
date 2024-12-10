@@ -11,7 +11,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION  "3.0"
+#define PLUGIN_VERSION  "3.1"
 
 public Plugin myinfo =
 {
@@ -189,17 +189,17 @@ enum struct PlayerAnimation
 
 enum struct PlayerModel
 {
-	bool locked;
 	char name[MAX_MODELNAME];
 	char path[PLATFORM_MAX_PATH];
-	char vmBodyGroups[256];
-	int adminBitFlags;
-	int defaultPrio;
+	char team[MAX_TEAM_NAME_LENGTH];
 	char sounds[MAX_SOUNDSNAME];
+	char vmBodyGroups[256];
 	SoundParams jumpSndParams;
 	Interval hurtSndHP;
+	int adminBitFlags;
+	int defaultPrio;
 	int hudColor[4];
-	int team;
+	bool locked;
 
 	ArrayList skins;
 	ArrayList bodyGroups;
@@ -233,6 +233,17 @@ enum struct PlayerModel
 	void Precache()
 	{
 		PrecacheModel(this.path, true);
+	}
+
+	int GetTeamNum()
+	{
+		int team = String_IsNumeric(this.team) ? StringToInt(this.team) : FindTeamByName(this.team);
+		if (team < 0 || team >= MAX_TEAMS)
+		{
+			LogError("Invalid team \"%s\" specified for model \"%s\"", this.team, this.name);
+			team = 0;
+		}
+		return team;
 	}
 
 	int GetSkin(int index)
@@ -943,11 +954,12 @@ ArrayList BuildSelectableModels(int client)
 				continue;
 		}
 
-		if (currentTeam[client] > TEAM_SPECTATOR && currentTeam[client] != model.team)
+		int modelTeam = model.GetTeamNum();
+		if (currentTeam[client] > TEAM_SPECTATOR && currentTeam[client] != modelTeam)
 		{
 			if (cvTeamBased.IntValue == 2)
 				continue;
-			if (cvTeamBased.IntValue == 1 && model.team > TEAM_SPECTATOR)
+			if (cvTeamBased.IntValue == 1 && modelTeam > TEAM_SPECTATOR)
 				continue;
 		}
 
@@ -1842,12 +1854,7 @@ void ParseModels(KeyValues kv)
 				kv.GetString("adminflags", buffer, sizeof(buffer), "-1");
 				model.adminBitFlags = StrEqual(buffer, "-1") ? -1 : ReadFlagString(buffer);
 
-				kv.GetString("team", buffer, sizeof(buffer), "0");
-				model.team = String_IsNumeric(buffer) ? StringToInt(buffer) : FindTeamByName(buffer);
-				if (model.team < 0 || model.team >= MAX_TEAMS)
-				{
-					model.team = 0;
-				}
+				kv.GetString("team", model.team, sizeof(model.team), "0");
 
 				if (kv.GetDataType("downloads") == KvData_None && kv.JumpToKey("downloads"))
 				{
