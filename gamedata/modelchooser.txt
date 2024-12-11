@@ -124,13 +124,5 @@
 				"linux"		"44"
 			}
 		}
-		"Signatures"
-		{
-			"CBaseAnimating::ResetSequence" // CBaseAnimating::ResetSequence(int nSequence)
-			{
-				"windows" "\x55\x8B\xEC\xA1\x2A\x2A\x2A\x2A\x53\x56\x8B\xD9\xB9\x2A\x2A\x2A\x2A\x57\xFF\x50\x2C\x8B\x7D\x08" // str: "ResetSequence : %s: %s -> %s\n"
-				"linux" "@_ZN14CBaseAnimating13ResetSequenceEi"
-			}
-		}
 	}
 }

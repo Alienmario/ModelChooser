@@ -79,7 +79,7 @@ public void OnPluginStart()
 	cvHudText1y = CreateConVar("modelchooser_hudtext_y", "0.01", "Hudtext 1 Y coordinate, from 0 (top) to 1 (bottom), -1 is the center");
 	cvHudText2x = CreateConVar("modelchooser_hudtext2_x", "-1", "Hudtext 2 X coordinate, from 0 (left) to 1 (right), -1 is the center");
 	cvHudText2y = CreateConVar("modelchooser_hudtext2_y", "0.95", "Hudtext 2 Y coordinate, from 0 (top) to 1 (bottom), -1 is the center");
-	cvForceFullUpdate = CreateConVar("modelchooser_forcefullupdate", "1", "Fixes weapon prediction glitch caused by going thirperson, recommended to keep on unless you run into issues");
+	cvForceFullUpdate = CreateConVar("modelchooser_forcefullupdate", "1", "Fixes weapon prediction glitch caused by going thirdperson, recommended to keep on unless you run into issues");
 	mp_forcecamera = FindConVar("mp_forcecamera");
 
 	cvTeamBased.AddChangeHook(Hook_TeamBasedCvarChanged);
@@ -104,13 +104,21 @@ public void OnPluginStart()
 	LoadDHookVirtual(gamedata, hkDeathSound, "CBasePlayer::DeathSound");
 	LoadDHookVirtual(gamedata, hkSetAnimation, "CBasePlayer::SetAnimation");
 	
-	char szResetSequence[] = "CBaseAnimating::ResetSequence";
-	StartPrepSDKCall(SDKCall_Entity);
-	if (!PrepSDKCall_SetFromConf(gamedata, SDKConf_Signature, szResetSequence))
-		SetFailState("Could not obtain gamedata signature %s", szResetSequence);
-	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
-	if (!(callResetSequence = EndPrepSDKCall()))
-		SetFailState("Could not prep SDK call %s", szResetSequence);
+	if (GetEngineVersion() == Engine_HL2DM)
+	{
+		char szResetSequence[] = "CBaseAnimating::ResetSequence";
+		StartPrepSDKCall(SDKCall_Entity);
+		if (PrepSDKCall_SetFromConf(gamedata, SDKConf_Signature, szResetSequence))
+		{
+			PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
+			if (!(callResetSequence = EndPrepSDKCall()))
+				LogError("Could not prep SDK call %s", szResetSequence);
+		}
+		else LogError("Could not obtain gamedata signature %s", szResetSequence);
+	
+		if (!callResetSequence)
+			LogError("Custom animations will not work");
+	}
 	
 	char szGetClient[] = "CBaseServer::GetClient";
 	StartPrepSDKCall(SDKCall_Server);
@@ -132,6 +140,9 @@ public void OnPluginStart()
 			LogError("Could not prep SDK call %s", szUpdateAcknowledgedFramecount);
 	}
 	else LogError("Could not obtain gamedata offset %s", szUpdateAcknowledgedFramecount);
+	
+	if (!callGetClient || !callUpdateAcknowledgedFramecount)
+		LogError("Prediction fix \"modelchooser_forcefullupdate\" will not work");
 	
 	gamedata.Close();
 }

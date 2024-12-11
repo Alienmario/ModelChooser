@@ -23,7 +23,7 @@ public MRESReturn Hook_SetAnimation(int client, DHookParam hParams)
 
 	float playbackRate = 1.0;
 	int sequence = GetCustomSequenceForAnim(client, playerAnim, playbackRate);
-	if (sequence > -1)
+	if (sequence > -1 && callResetSequence)
 	{
 		SetEntPropFloat(client, Prop_Data, "m_flPlaybackRate", playbackRate);
 		if (GetEntProp(client, Prop_Send, "m_nSequence") != sequence)
