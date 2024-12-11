@@ -89,6 +89,7 @@ void ExitModelChooser(int client, bool silent = false, bool cancel = false)
 	}
 	ToggleMenuOverlay(client, false);
 	Client_SetHideHud(client, 0);
+	Client_ScreenFade(client, 200, FFADE_PURGE|FFADE_IN, 0);
 	SetEntityFlags(client, GetEntityFlags(client) & ~FL_ATCONTROLS);
 	ClearMenuHud(client);
 	SDKUnhook(client, SDKHook_OnTakeDamage, Hook_BlockDamage);
@@ -120,6 +121,7 @@ void ExitModelChooser(int client, bool silent = false, bool cancel = false)
 	}
 
 	menuSelection[client].Reset();
+	ForceFullUpdate(client);
 }
 
 void OnMenuModelSelection(int client, bool initial = false)
@@ -296,12 +298,12 @@ void UpdateMenuHud(int client, PlayerModel model, bool initital = false)
 		Format(text, sizeof(text), "%s\n⇡⇣ %5d / %-5d ⇡⇣", text, menuSelection[client].skin + 1, menuSelection[client].skinCount);
 	}
 	
-	SetHudTextParamsEx(-1.0, 0.01, 60.0, color, {200, 200, 200, 200}, 1, 0.1, initital? 1.2 : 0.0, 0.15);
+	SetHudTextParamsEx(cvHudText1x.FloatValue, cvHudText1y.FloatValue, 60.0, color, {200, 200, 200, 200}, 1, 0.1, initital? 1.2 : 0.0, 0.15);
 	ShowHudText(client, topHudChanToggle[client], text);
 
 	// Bottom
 	Format(text, sizeof(text), "⮜ %7d / %-7d ⮞", menuSelection[client].index + 1, selectableModels[client].Length);
-	SetHudTextParamsEx(-1.0, 0.95, 9999999.0, DEFAULT_HUD_COLOR, _, 1, 0.0, initital? 1.2 : 0.0, 1.0);
+	SetHudTextParamsEx(cvHudText2x.FloatValue, cvHudText2y.FloatValue, 9999999.0, DEFAULT_HUD_COLOR, _, 1, 0.0, initital? 1.2 : 0.0, 1.0);
 	ShowHudText(client, bottomHudChanToggle[client], text);
 	
 	g_bDrawing = false;

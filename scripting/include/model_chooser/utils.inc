@@ -92,6 +92,12 @@ stock void FixThirdpersonWeapons(int client)
 	}
 }
 
+stock int EntIndexToEntRefEx(int ent)
+{
+	int index = EntRefToEntIndex(ent);
+	return index == -1? -1 : EntIndexToEntRef(index);
+}
+
 // Copy pasta of "SetBodygroup" from the SDK
 stock void CalcBodygroup(StudioHdr pStudioHdr, int& body, int iGroup, int iValue)
 {

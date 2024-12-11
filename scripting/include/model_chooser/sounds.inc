@@ -48,7 +48,7 @@ public Action Sounds_CheckHealthRaise(Handle timer)
 
 public MRESReturn Hook_DeathSound(int client, DHookParam hParams)
 {
-	if (menuSelection[client].index != -1 && !IsPlayerAlive(client))
+	if (IsInMenu(client) && !IsPlayerAlive(client))
 	{
 		ExitModelChooser(client, true);
 	}

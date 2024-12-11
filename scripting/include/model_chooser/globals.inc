@@ -51,6 +51,8 @@ DynamicHook hkSetAnimation;
 
 // Calls
 Handle callResetSequence;
+Handle callGetClient;
+Handle callUpdateAcknowledgedFramecount;
 
 // Persistence
 PersistentPreferences persistentPreferences[MAX_TEAMS];
@@ -66,4 +68,9 @@ ConVar cvLockModel;
 ConVar cvLockScale;
 ConVar cvMenuSnd;
 ConVar cvTeamBased;
+ConVar cvHudText1x;
+ConVar cvHudText1y;
+ConVar cvHudText2x;
+ConVar cvHudText2y;
+ConVar cvForceFullUpdate;
 ConVar mp_forcecamera;

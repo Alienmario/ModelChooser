@@ -43,6 +43,11 @@ Type !models to enter. Press movement keys to browse. Press use or jump to exit.
 | **modelchooser_overlay** | `modelchooser/background` | Screen overlay material to show when choosing models (auto downloads supported), empty to disable |
 | **modelchooser_lock_model** | `models/props_wasteland/prison_padlock001a.mdl` | Model to display for locked playermodels (auto downloads supported) |
 | **modelchooser_lock_scale** | `5.0` | Scale of the lock model |
+| **modelchooser_hudtext_x** | `-1` | Hudtext 1 X coordinate, from 0 (left) to 1 (right), -1 is the center |
+| **modelchooser_hudtext_y** | `0.01` | Hudtext 1 Y coordinate, from 0 (top) to 1 (bottom), -1 is the center |
+| **modelchooser_hudtext2_x** | `-1` | Hudtext 2 X coordinate, from 0 (left) to 1 (right), -1 is the center |
+| **modelchooser_hudtext2_y** | `0.95` | Hudtext 2 Y coordinate, from 0 (top) to 1 (bottom), -1 is the center |
+| **modelchooser_forcefullupdate** | `1` | (0/1) Fixes weapon prediction glitch caused by going thirperson, recommended to keep on unless you run into issues |
 
 #### Admin commands
 - **sm_unlockmodel** Unlock a locked model by name for a player
