@@ -100,7 +100,7 @@ public void OnPluginStart()
 		SetFailState("Failed to load \"modelchooser\" gamedata");
 	}
 
-	LoadDHookVirtual(gamedata, hkSetModel, "CBaseEntity::SetModel");
+	LoadDHookVirtual(gamedata, hkSetModel, "CBaseEntity::SetModel_");
 	LoadDHookVirtual(gamedata, hkDeathSound, "CBasePlayer::DeathSound");
 	LoadDHookVirtual(gamedata, hkSetAnimation, "CBasePlayer::SetAnimation");
 	

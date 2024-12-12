@@ -4,7 +4,7 @@
 	{
 		"Functions"
 		{
-			"CBaseEntity::SetModel"
+			"CBaseEntity::SetModel_" // https://github.com/alliedmodders/sourcemod/issues/1879
 			{
 				"offset"	"CBaseEntity::SetModel"
 				"hooktype"	"entity"
