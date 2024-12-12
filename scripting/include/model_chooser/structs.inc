@@ -190,7 +190,7 @@ enum struct PlayerModel
 		int team = String_IsNumeric(this.team) ? StringToInt(this.team) : FindTeamByName(this.team);
 		if (team < 0 || team >= MAX_TEAMS)
 		{
-			if (GetTeamCount() > 1)
+			if (GetTeamCount() > 2)
 			{
 				LogError("Invalid team \"%s\" specified for model \"%s\"", this.team, this.name);
 			}

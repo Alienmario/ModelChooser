@@ -324,17 +324,34 @@ public MRESReturn Hook_SetModel(int client, DHookParam hParams)
 {
 	SelectionData selection;
 	PlayerModel model;
-
 	GetSelectionDataAuto(client, selection);
 	if (Selection2Model(client, selection, model))
 	{
 		DHookSetParamString(hParams, 1, model.path);
 		SetEntitySkin(client, model.GetSkin(selection.skin));
 		SetEntityBody(client, model.GetBody(selection.body));
-		UpdateViewModels(client);
+		// Delay needed for Black Mesa
+		CreateTimer(0.1, Timer_UpdateModelAccessories, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 		return MRES_ChangedHandled;
 	}
 	return MRES_Ignored;
+}
+
+void Timer_UpdateModelAccessories(Handle timer, int userid)
+{
+	int client = GetClientOfUserId(userid);
+	if (client)
+	{
+		SelectionData selection;
+		PlayerModel model;
+		GetSelectionDataAuto(client, selection);
+		if (Selection2Model(client, selection, model))
+		{
+			SetEntitySkin(client, model.GetSkin(selection.skin));
+			SetEntityBody(client, model.GetBody(selection.body));
+			UpdateViewModels(client);
+		}
+	}
 }
 
 void RefreshModel(int client)
