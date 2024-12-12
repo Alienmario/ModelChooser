@@ -124,7 +124,7 @@ void ExitModelChooser(int client, bool silent = false, bool cancel = false)
 	ForceFullUpdate(client);
 }
 
-void OnMenuModelSelection(int client, bool initial = false)
+void OnMenuModelSelection(int client, bool initial = false, bool scrolling = false)
 {
 	StopSound(client, SNDCHAN_BODY, lastPlayedSound[client]);
 
@@ -142,7 +142,7 @@ void OnMenuModelSelection(int client, bool initial = false)
 		PlayMenuClickSound(client);
 	}
 	
-	if (!menuSelection[client].locked)
+	if (!scrolling && !menuSelection[client].locked)
 	{
 		SoundPack soundPack;
 		GetSoundPack(model, soundPack);
@@ -290,19 +290,19 @@ void UpdateMenuHud(int client, PlayerModel model, bool initital = false)
 
 	if (showBody)
 	{
-		Format(text, sizeof(text), "%s\n⎧◦⎫ %3d / %-3d ⎧◦⎫", text, menuSelection[client].body + 1, menuSelection[client].bodyCount);
+		Format(text, sizeof(text), "%s\n⇣ %3d / %-3d ⇡", text, menuSelection[client].body + 1, menuSelection[client].bodyCount);
 	}
 
 	if (showSkin)
 	{
-		Format(text, sizeof(text), "%s\n⇡⇣ %5d / %-5d ⇡⇣", text, menuSelection[client].skin + 1, menuSelection[client].skinCount);
+		Format(text, sizeof(text), "%s\n⇠ %3d / %-3d ⇢", text, menuSelection[client].skin + 1, menuSelection[client].skinCount);
 	}
 	
 	SetHudTextParamsEx(cvHudText1x.FloatValue, cvHudText1y.FloatValue, 60.0, color, {200, 200, 200, 200}, 1, 0.1, initital? 1.2 : 0.0, 0.15);
 	ShowHudText(client, topHudChanToggle[client], text);
 
 	// Bottom
-	Format(text, sizeof(text), "⮜ %7d / %-7d ⮞", menuSelection[client].index + 1, selectableModels[client].Length);
+	Format(text, sizeof(text), "◀ L %12d / %-12d R ▶", menuSelection[client].index + 1, selectableModels[client].Length);
 	SetHudTextParamsEx(cvHudText2x.FloatValue, cvHudText2y.FloatValue, 9999999.0, DEFAULT_HUD_COLOR, _, 1, 0.0, initital? 1.2 : 0.0, 1.0);
 	ShowHudText(client, bottomHudChanToggle[client], text);
 	
@@ -368,15 +368,21 @@ public void Timer_MenuInit2(Handle timer, int userId)
 	}
 }
 
+#define MENU_SCROLL_DELAY_MAX 0.6
+#define MENU_SCROLL_DELAY_MIN 0.15
+
 public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float vel[3], const float angles[3], int weapon, int subtype, int cmdnum, int tickcount, int seed, const int mouse[2])
 {
 	if (!(0 < client <= MAXPLAYERS))
 		return;
 	
-	static int lastButtons[MAXPLAYERS + 1];
-	
 	if (IsInMenu(client))
 	{
+		static int lastButtons[MAXPLAYERS + 1];
+		static int lastButtonsAdjusted[MAXPLAYERS + 1];
+		static float lastChange[MAXPLAYERS + 1];
+		static float delay[MAXPLAYERS + 1];
+
 		if (!IsPlayerAlive(client))
 		{
 			ExitModelChooser(client, true);
@@ -387,37 +393,31 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 		}
 		else
 		{
+			bool scrolling = delay[client] != MENU_SCROLL_DELAY_MAX;
+
 			if (selectableModels[client].Length > 1)
 			{
-				if (buttons & IN_MOVELEFT && !(lastButtons[client] & IN_MOVELEFT))
+				if (buttons & IN_ATTACK && !(lastButtonsAdjusted[client] & IN_ATTACK))
 				{
 					if (--menuSelection[client].index < 0)
 					{
 						menuSelection[client].index = selectableModels[client].Length - 1;
 					}
-					OnMenuModelSelection(client);
+					OnMenuModelSelection(client, false, scrolling);
 				}
-				if (buttons & IN_MOVERIGHT && !(lastButtons[client] & IN_MOVERIGHT))
+				if (buttons & IN_ATTACK2 && !(lastButtonsAdjusted[client] & IN_ATTACK2))
 				{
 					if (++menuSelection[client].index >= selectableModels[client].Length)
 					{
 						menuSelection[client].index = 0;
 					}
-					OnMenuModelSelection(client);
+					OnMenuModelSelection(client, false, scrolling);
 				}
 			}
 
 			if (menuSelection[client].skinCount > 1)
 			{
-				if (buttons & IN_FORWARD && !(lastButtons[client] & IN_FORWARD))
-				{
-					if (++menuSelection[client].skin >= menuSelection[client].skinCount)
-					{
-						menuSelection[client].skin = 0;
-					}
-					OnMenuSkinSelection(client);
-				}
-				if (menuSelection[client].skinCount && buttons & IN_BACK && !(lastButtons[client] & IN_BACK))
+				if (buttons & IN_MOVELEFT && !(lastButtonsAdjusted[client] & IN_MOVELEFT))
 				{
 					if (--menuSelection[client].skin < 0)
 					{
@@ -425,11 +425,19 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 					}
 					OnMenuSkinSelection(client);
 				}
+				if (buttons & IN_MOVERIGHT && !(lastButtonsAdjusted[client] & IN_MOVERIGHT))
+				{
+					if (++menuSelection[client].skin >= menuSelection[client].skinCount)
+					{
+						menuSelection[client].skin = 0;
+					}
+					OnMenuSkinSelection(client);
+				}
 			}
 
 			if (menuSelection[client].bodyCount > 1)
 			{
-				if (buttons & IN_ATTACK && !(lastButtons[client] & IN_ATTACK))
+				if (buttons & IN_BACK && !(lastButtonsAdjusted[client] & IN_BACK))
 				{
 					if (--menuSelection[client].body < 0)
 					{
@@ -437,7 +445,7 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 					}
 					OnMenuBodySelection(client);
 				}
-				if (buttons & IN_ATTACK2 && !(lastButtons[client] & IN_ATTACK2))
+				if (buttons & IN_FORWARD && !(lastButtonsAdjusted[client] & IN_FORWARD))
 				{
 					if (++menuSelection[client].body >= menuSelection[client].bodyCount)
 					{
@@ -447,7 +455,23 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 				}
 			}
 		}
+		
+		float time = GetGameTime();
+		if (lastButtons[client] != buttons)
+		{
+			lastButtons[client] = lastButtonsAdjusted[client] = buttons;
+			lastChange[client] = time;
+			delay[client] = MENU_SCROLL_DELAY_MAX;
+		}
+		else if (buttons && time - lastChange[client] > delay[client])
+		{
+			lastButtonsAdjusted[client] = 0;
+			lastChange[client] = time;
+			delay[client] = Math_Clamp(delay[client] * 0.9, MENU_SCROLL_DELAY_MIN, MENU_SCROLL_DELAY_MAX);
+		}
+		else
+		{
+			lastButtonsAdjusted[client] = lastButtons[client];
+		}
 	}
-
-	lastButtons[client] = buttons;
 }

@@ -31,7 +31,7 @@
 - (Compile) **bcserv/[smlib](https://github.com/bcserv/smlib/tree/transitional_syntax)**
 
 #### Usage
-Type !models to enter. Press movement keys to browse. Press use or jump to exit.
+Type !models to enter. Press attack / movement keys to browse. Press use or jump to exit.
 
 #### Config
 | Convar | Default | Description |
