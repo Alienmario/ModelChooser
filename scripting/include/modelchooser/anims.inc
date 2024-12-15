@@ -61,12 +61,8 @@ int GetCustomSequenceForAnim(int client, PLAYER_ANIM playerAnim, float &playback
 			float time = GetGameTime();
 			if (time > nextJumpSound[client])
 			{
-				{
-					SoundPack soundPack;
-					GetSoundPack(model, soundPack);
-					PlayRandomSound(soundPack.jumpSounds, client, client, SNDCHAN_STATIC, true, JUMP_PITCH_MIN, JUMP_PITCH_MAX, JUMP_VOL);
-					nextJumpSound[client] = time + model.jumpSndParams.cooldown.Rand();
-				}
+				PlayRandomSound(GetSoundPack(model).GetSoundList("jump"), client, client, SNDCHAN_STATIC, true, JUMP_PITCH_MIN, JUMP_PITCH_MAX, JUMP_VOL);
+				nextJumpSound[client] = time + model.jumpSndParams.cooldown.Rand();
 			}
 		}
 		else if (playerAnim == PLAYER_WALK)

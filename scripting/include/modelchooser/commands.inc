@@ -18,7 +18,7 @@ public Action Command_UnlockModel(int client, int args)
 		return Plugin_Handled;
 	}
 	
-	char arg1[65], arg2[MAX_MODELNAME];
+	char arg1[65], arg2[MODELCHOOSER_MAX_NAME];
 	GetCmdArg(1, arg1, sizeof(arg1));
 	GetCmdArg(2, arg2, sizeof(arg2));
 	
@@ -42,8 +42,7 @@ public Action Command_UnlockModel(int client, int args)
 	
 	String_ToUpper(arg2, arg2, sizeof(arg2));
 	
-	PlayerModel model;
-	if (modelList.FindByName(arg2, model) == -1)
+	if (modelList.FindByName(arg2) == -1)
 	{
 		ReplyToCommand(client, "Model named %s doesn't exist!", arg2);
 		return Plugin_Handled;
@@ -74,7 +73,7 @@ public Action Command_LockModel(int client, int args)
 		return Plugin_Handled;
 	}
 	
-	char arg1[65], arg2[MAX_MODELNAME];
+	char arg1[65], arg2[MODELCHOOSER_MAX_NAME];
 	GetCmdArg(1, arg1, sizeof(arg1));
 	GetCmdArg(2, arg2, sizeof(arg2));
 	
@@ -98,8 +97,7 @@ public Action Command_LockModel(int client, int args)
 	
 	String_ToUpper(arg2, arg2, sizeof(arg2));
 	
-	PlayerModel model;
-	if (modelList.FindByName(arg2, model) == -1)
+	if (modelList.FindByName(arg2) == -1)
 	{
 		ReplyToCommand(client, "Model named %s doesn't exist!", arg2);
 		return Plugin_Handled;

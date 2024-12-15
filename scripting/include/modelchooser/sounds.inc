@@ -13,9 +13,7 @@ public void Sounds_EventPlayerHurt(Event event, int client)
 	{
 		if (0 < health <= model.hurtSndHP.Rand())
 		{
-			SoundPack soundPack;
-			GetSoundPack(model, soundPack);
-			PlayRandomSound(soundPack.hurtSounds, client, client, SNDCHAN_STATIC, true, HURT_PITCH_MIN, HURT_PITCH_MAX);
+			PlayRandomSound(GetSoundPack(model).GetSoundList("hurt"), client, client, SNDCHAN_STATIC, true, HURT_PITCH_MIN, HURT_PITCH_MAX);
 			playedHurtSoundAt[client] = health;
 		}
 	}
@@ -58,8 +56,6 @@ public MRESReturn Hook_DeathSound(int client, DHookParam hParams)
 	{
 		StopSound(client, SNDCHAN_BODY, lastPlayedSound[client]);
 		StopSound(client, SNDCHAN_STATIC, lastPlayedSound[client]);
-		SoundPack soundPack;
-		GetSoundPack(model, soundPack);
 
 		int target = client;
 		int m_hRagdoll = GetEntPropEnt(client, Prop_Send, "m_hRagdoll");
@@ -68,7 +64,7 @@ public MRESReturn Hook_DeathSound(int client, DHookParam hParams)
 			target = m_hRagdoll;
 		}
 		
-		if (PlayRandomSound(soundPack.deathSounds, client, target, SNDCHAN_STATIC, true, HURT_PITCH_MIN, HURT_PITCH_MAX))
+		if (PlayRandomSound(GetSoundPack(model).GetSoundList("death"), client, target, SNDCHAN_STATIC, true, HURT_PITCH_MIN, HURT_PITCH_MAX))
 			return MRES_Supercede;
 	}
 	return MRES_Ignored;

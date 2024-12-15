@@ -22,8 +22,6 @@ public Plugin myinfo =
 	url = "https://github.com/Alienmario/ModelChooser"
 };
 
-#define MAX_MODELNAME 64
-#define MAX_SOUNDSNAME 64
 #define MAX_ANIM_NAME 128
 #define HURT_SOUND_HP 45.0
 
@@ -39,16 +37,16 @@ public Plugin myinfo =
 #define FALLBACK_MODEL "models/error.mdl"
 int DEFAULT_HUD_COLOR[] = {150, 150, 150, 150};
 
-#include <model_chooser/structs>
-#include <model_chooser/utils>
-#include <model_chooser/globals>
-#include <model_chooser/natives>
-#include <model_chooser/commands>
-#include <model_chooser/menu>
-#include <model_chooser/sounds>
-#include <model_chooser/anims>
-#include <model_chooser/config>
-#include <model_chooser/viewmodels>
+#include <modelchooser/utils>
+#include <modelchooser/structs>
+#include <modelchooser/globals>
+#include <modelchooser/natives>
+#include <modelchooser/commands>
+#include <modelchooser/menu>
+#include <modelchooser/sounds>
+#include <modelchooser/anims>
+#include <modelchooser/config>
+#include <modelchooser/viewmodels>
 
 public void OnPluginStart()
 {
@@ -59,6 +57,7 @@ public void OnPluginStart()
 	downloads = new SmartDM_FileSet();
 	persistentPreferences[TEAM_UNASSIGNED].Init(TEAM_UNASSIGNED);
 	
+	fwdOnConfigLoaded = new GlobalForward("ModelChooser_OnConfigLoaded", ET_Ignore, Param_Cell, Param_String);
 	fwdOnModelChanged = new GlobalForward("ModelChooser_OnModelChanged", ET_Ignore, Param_Cell, Param_String);
 	
 	RegConsoleCmd("sm_models", Command_Model);
@@ -205,7 +204,7 @@ public void OnClientConnected(int client)
 {
 	ResetClientModels(client);
 	ResetUnlockedModels(client);
-	delete tMenuInit[client];
+	tMenuInit[client] = null;
 	clientInitChecks[client] = 3;
 	currentTeam[client] = 0;
 }
@@ -397,7 +396,7 @@ void InitClientModels(int client)
 	PersistentPreferences prefs;
 	prefs = GetPreferences(client);
 
-	char modelName[MAX_MODELNAME];
+	char modelName[MODELCHOOSER_MAX_NAME];
 	prefs.model.Get(client, modelName, sizeof(modelName));
 
 	// first select by team based preferences
@@ -448,10 +447,11 @@ ArrayList BuildSelectableModels(int client)
 
 bool SelectModelByName(int client, const char[] modelName, int skin = 0, int body = 0)
 {
-	PlayerModel model;
-	int index = modelList.FindByName(modelName, model);
+	int index = modelList.FindByName(modelName);
 	if (index != -1)
 	{
+		PlayerModel model;
+		modelList.GetArray(index, model);
 		int clIndex = selectableModels[client].FindValue(index);
 		if (clIndex != -1 && !IsModelLocked(model, client))
 		{
@@ -525,12 +525,12 @@ bool IsModelLocked(const PlayerModel model, int client)
 	return (model.locked && !unlockedModels[client].GetValue(model.name, client));
 }
 
-void UnlockModel(int client, char modelName[MAX_MODELNAME])
+void UnlockModel(int client, char modelName[MODELCHOOSER_MAX_NAME])
 {
 	unlockedModels[client].SetValue(modelName, true);
 }
 
-void LockModel(int client, char modelName[MAX_MODELNAME])
+void LockModel(int client, char modelName[MODELCHOOSER_MAX_NAME])
 {
 	unlockedModels[client].Remove(modelName);
 }
@@ -559,9 +559,19 @@ PersistentPreferences GetPreferencesByTeam(int team)
 	return prefs;
 }
 
-void GetSoundPack(const PlayerModel model, SoundPack soundPack)
+SoundPack GetSoundPack(const PlayerModel model, bool emptyDefault = true)
 {
-	soundMap.GetArray(model.sounds, soundPack, sizeof(SoundPack));
+	SoundPack soundPack = soundMap.GetSoundPack(model.sounds);
+	if (soundPack || !emptyDefault)
+	{
+		return soundPack;
+	}
+	static SoundPack emptySoundPack;
+	if (!emptySoundPack)
+	{
+		emptySoundPack = new SoundPack();
+	}
+	return emptySoundPack;
 }
 
 void ForceFullUpdate(int client)

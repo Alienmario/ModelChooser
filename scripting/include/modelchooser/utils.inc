@@ -1,18 +1,6 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-stock void PrecacheSoundsInList(ArrayList soundList)
-{
-	int len = soundList.Length;
-	char path[PLATFORM_MAX_PATH];
-	
-	for (int i = 0; i < len; i++)
-	{
-		soundList.GetString(i, path, sizeof(path));
-		PrecacheSound(path, true);
-	}	
-}
-
 Action Hook_BlockDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
 	return Plugin_Handled;

@@ -32,6 +32,9 @@ void LoadConfig()
 		while (kv.GotoNextKey());
 	}
 	delete kv;
+
+	Call_StartForward(fwdOnConfigLoaded);
+	Call_Finish();
 }
 
 void ParseModels(KeyValues kv)
@@ -73,7 +76,6 @@ void ParseModels(KeyValues kv)
 				}
 				
 				kv.GetString("sounds", model.sounds, sizeof(model.sounds));
-				String_ToUpper(model.sounds, model.sounds, sizeof(model.sounds));
 				
 				ParseInterval(kv, model.jumpSndParams.cooldown, "jumpSoundTime");
 				ParseInterval(kv, model.hurtSndHP, "hurtSoundHP", HURT_SOUND_HP, HURT_SOUND_HP);
@@ -98,6 +100,13 @@ void ParseModels(KeyValues kv)
 				if (kv.GetDataType("downloads") == KvData_None && kv.JumpToKey("downloads"))
 				{
 					ParseFileItems(kv, false);
+					kv.GoBack();
+				}
+				
+				model.customProperties = new StringMap();
+				if (kv.GetDataType("custom") == KvData_None && kv.JumpToKey("custom"))
+				{
+					ParseCustomProperties(kv, model.customProperties);
 					kv.GoBack();
 				}
 								
@@ -194,53 +203,36 @@ void ParseSounds(KeyValues kv)
 {
 	if (kv.GotoFirstSubKey())
 	{
+		char soundPack[MODELCHOOSER_MAX_NAME];
 		do
 		{
-			SoundPack soundPack;
-			char name[MAX_SOUNDSNAME];
-			if (kv.GetSectionName(name, sizeof(name)))
+			if (kv.GetSectionName(soundPack, sizeof(soundPack)))
 			{
-				if (kv.JumpToKey("Hurt"))
-				{
-					soundPack.hurtSounds = ParseFileItems(kv, true, "sound");
-					kv.GoBack();
-				}
-				else soundPack.hurtSounds = CreateArray();
-				
-				if (kv.JumpToKey("Death"))
-				{
-					soundPack.deathSounds = ParseFileItems(kv, true, "sound");
-					kv.GoBack();
-				}
-				else soundPack.deathSounds = CreateArray();
-				
-				if (kv.JumpToKey("View"))
-				{
-					soundPack.viewSounds = ParseFileItems(kv, true, "sound");
-					kv.GoBack();
-				}
-				else soundPack.viewSounds = CreateArray();
-				
-				if (kv.JumpToKey("Select"))
-				{
-					soundPack.selectSounds = ParseFileItems(kv, true, "sound");
-					kv.GoBack();
-				}
-				else soundPack.selectSounds = CreateArray();
-
-				if (kv.JumpToKey("Jump"))
-				{
-					soundPack.jumpSounds = ParseFileItems(kv, true, "sound");
-					kv.GoBack();
-				}
-				else soundPack.jumpSounds = CreateArray();
-
-				String_ToUpper(name, name, sizeof(name));
-				soundMap.SetArray(name, soundPack, sizeof(SoundPack));
+				soundMap.AddSoundPack(soundPack, ParseSoundPack(kv));
 			}
-		} while (kv.GotoNextKey());
+		}
+		while (kv.GotoNextKey());
 		kv.GoBack();
 	}
+}
+
+SoundPack ParseSoundPack(KeyValues kv)
+{
+	SoundPack soundPack = new SoundPack();
+	if (kv.GotoFirstSubKey())
+	{
+		char soundType[MODELCHOOSER_MAX_NAME];
+		do
+		{
+			if (kv.GetSectionName(soundType, sizeof(soundType)))
+			{
+				soundPack.AddSoundList(soundType, view_as<SoundList>(ParseFileItems(kv, true, "sound")));
+			}
+		}
+		while (kv.GotoNextKey());
+		kv.GoBack();
+	}
+	return soundPack;
 }
 
 ArrayList ParseFileItems(KeyValues kv, bool precache, const char[] folderType = "")
@@ -303,6 +295,25 @@ ArrayList ParseDelimitedIntList(KeyValues kv, const char[] key)
 
 	kv.GoBack();
 	return list;
+}
+
+void ParseCustomProperties(KeyValues kv, StringMap map)
+{
+	if (kv.GotoFirstSubKey(false))
+	{
+		char key[256], value[4096];
+		do
+		{
+			if (kv.GetSectionName(key, sizeof(key)))
+			{
+				String_ToUpper(key, key, sizeof(key));
+				kv.GetString(NULL_STRING, value, sizeof(value));
+				map.SetString(key, value);
+			}
+		}
+		while (kv.GotoNextKey(false));
+		kv.GoBack();
+	}
 }
 
 void ParseInterval(KeyValues kv, Interval interval, const char[] key, float defualtMin = 0.0, float defaultMax = 0.0)

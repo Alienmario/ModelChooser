@@ -58,6 +58,7 @@ Handle callUpdateAcknowledgedFramecount;
 PersistentPreferences persistentPreferences[MAX_TEAMS];
 
 // Forwards
+GlobalForward fwdOnConfigLoaded;
 GlobalForward fwdOnModelChanged;
 
 // Cvars

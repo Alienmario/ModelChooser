@@ -6,7 +6,7 @@ bool IsInMenu(int client)
 	return (menuSelection[client].index != -1);
 }
 
-bool PreEnterCheck(int client)
+bool PreEnterCheck(int client, bool printError = true)
 {
 	if (!client)
 	{
@@ -14,22 +14,22 @@ bool PreEnterCheck(int client)
 	}
 	if (selectableModels[client] == null || !selectableModels[client].Length)
 	{
-		PrintToChat(client, "[ModelChooser] No models are available.");
+		if (printError) PrintToChat(client, "[ModelChooser] No models are available.");
 		return false;
 	}
 	if (!IsPlayerAlive(client))
 	{
-		PrintToChat(client, "[ModelChooser] You need to be alive to use models.");
+		if (printError) PrintToChat(client, "[ModelChooser] You need to be alive to use models.");
 		return false;
 	}
 	if (IsInMenu(client))
 	{
-		PrintToChat(client, "[ModelChooser] You are already changing models, dummy :]");
+		if (printError) PrintToChat(client, "[ModelChooser] You are already changing models, dummy :]");
 		return false;
 	}
 	if (GetEntityFlags(client) & FL_ATCONTROLS || Client_IsInThirdPersonMode(client))
 	{
-		PrintToChat(client, "[ModelChooser] You cannot change models currently.");
+		if (printError) PrintToChat(client, "[ModelChooser] You cannot change models currently.");
 		return false;
 	}
 	return true;
@@ -103,9 +103,7 @@ void ExitModelChooser(int client, bool silent = false, bool cancel = false)
 	{
 		if (!silent)
 		{
-			SoundPack soundPack;
-			GetSoundPack(model, soundPack);
-			PlayRandomSound(soundPack.selectSounds, client);
+			PlayRandomSound(GetSoundPack(model).GetSoundList("select"), client);
 		}
 		
 		activeSelection[client] = menuSelection[client];
@@ -144,9 +142,7 @@ void OnMenuModelSelection(int client, bool initial = false, bool scrolling = fal
 	
 	if (!scrolling && !menuSelection[client].locked)
 	{
-		SoundPack soundPack;
-		GetSoundPack(model, soundPack);
-		PlayRandomSound(soundPack.viewSounds, client, _, SNDCHAN_BODY);
+		PlayRandomSound(GetSoundPack(model).GetSoundList("view"), client, _, SNDCHAN_BODY);
 	}
 
 	RefreshModel(client);
@@ -391,69 +387,9 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 		{
 			ExitModelChooser(client);
 		}
-		else
+		else if (tMenuInit[client] == null)
 		{
-			bool scrolling = delay[client] != MENU_SCROLL_DELAY_MAX;
-
-			if (selectableModels[client].Length > 1)
-			{
-				if (buttons & IN_ATTACK && !(lastButtonsAdjusted[client] & IN_ATTACK))
-				{
-					if (--menuSelection[client].index < 0)
-					{
-						menuSelection[client].index = selectableModels[client].Length - 1;
-					}
-					OnMenuModelSelection(client, false, scrolling);
-				}
-				if (buttons & IN_ATTACK2 && !(lastButtonsAdjusted[client] & IN_ATTACK2))
-				{
-					if (++menuSelection[client].index >= selectableModels[client].Length)
-					{
-						menuSelection[client].index = 0;
-					}
-					OnMenuModelSelection(client, false, scrolling);
-				}
-			}
-
-			if (menuSelection[client].skinCount > 1)
-			{
-				if (buttons & IN_MOVELEFT && !(lastButtonsAdjusted[client] & IN_MOVELEFT))
-				{
-					if (--menuSelection[client].skin < 0)
-					{
-						menuSelection[client].skin = menuSelection[client].skinCount - 1;
-					}
-					OnMenuSkinSelection(client);
-				}
-				if (buttons & IN_MOVERIGHT && !(lastButtonsAdjusted[client] & IN_MOVERIGHT))
-				{
-					if (++menuSelection[client].skin >= menuSelection[client].skinCount)
-					{
-						menuSelection[client].skin = 0;
-					}
-					OnMenuSkinSelection(client);
-				}
-			}
-
-			if (menuSelection[client].bodyCount > 1)
-			{
-				if (buttons & IN_BACK && !(lastButtonsAdjusted[client] & IN_BACK))
-				{
-					if (--menuSelection[client].body < 0)
-					{
-						menuSelection[client].body = menuSelection[client].bodyCount - 1;
-					}
-					OnMenuBodySelection(client);
-				}
-				if (buttons & IN_FORWARD && !(lastButtonsAdjusted[client] & IN_FORWARD))
-				{
-					if (++menuSelection[client].body >= menuSelection[client].bodyCount)
-					{
-						menuSelection[client].body = 0;
-					}
-					OnMenuBodySelection(client);
-				}
-			}
+			MenuSelectionThink(client, buttons, lastButtonsAdjusted[client], delay[client] != MENU_SCROLL_DELAY_MAX);
 		}
 		
 		float time = GetGameTime();
@@ -472,6 +408,69 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float
 		else
 		{
 			lastButtonsAdjusted[client] = lastButtons[client];
+		}
+	}
+}
+
+void MenuSelectionThink(int client, int buttons, int oldButtons, bool scrolling)
+{
+	if (selectableModels[client].Length > 1)
+	{
+		if (buttons & IN_ATTACK && !(oldButtons & IN_ATTACK))
+		{
+			if (--menuSelection[client].index < 0)
+			{
+				menuSelection[client].index = selectableModels[client].Length - 1;
+			}
+			OnMenuModelSelection(client, false, scrolling);
+		}
+		if (buttons & IN_ATTACK2 && !(oldButtons & IN_ATTACK2))
+		{
+			if (++menuSelection[client].index >= selectableModels[client].Length)
+			{
+				menuSelection[client].index = 0;
+			}
+			OnMenuModelSelection(client, false, scrolling);
+		}
+	}
+
+	if (menuSelection[client].skinCount > 1)
+	{
+		if (buttons & IN_MOVELEFT && !(oldButtons & IN_MOVELEFT))
+		{
+			if (--menuSelection[client].skin < 0)
+			{
+				menuSelection[client].skin = menuSelection[client].skinCount - 1;
+			}
+			OnMenuSkinSelection(client);
+		}
+		if (buttons & IN_MOVERIGHT && !(oldButtons & IN_MOVERIGHT))
+		{
+			if (++menuSelection[client].skin >= menuSelection[client].skinCount)
+			{
+				menuSelection[client].skin = 0;
+			}
+			OnMenuSkinSelection(client);
+		}
+	}
+
+	if (menuSelection[client].bodyCount > 1)
+	{
+		if (buttons & IN_BACK && !(oldButtons & IN_BACK))
+		{
+			if (--menuSelection[client].body < 0)
+			{
+				menuSelection[client].body = menuSelection[client].bodyCount - 1;
+			}
+			OnMenuBodySelection(client);
+		}
+		if (buttons & IN_FORWARD && !(oldButtons & IN_FORWARD))
+		{
+			if (++menuSelection[client].body >= menuSelection[client].bodyCount)
+			{
+				menuSelection[client].body = 0;
+			}
+			OnMenuBodySelection(client);
 		}
 	}
 }

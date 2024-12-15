@@ -1,6 +1,16 @@
 #pragma semicolon 1
 #pragma newdecls required
 
+#define MODELCHOOSER_MAX_NAME 64
+
+#if !defined MAX_TEAMS
+#define MAX_TEAMS				32	// Max number of teams in a game
+#endif
+
+#if !defined MAX_TEAM_NAME_LENGTH
+#define MAX_TEAM_NAME_LENGTH	32	// Max length of a team's name
+#endif
+
 enum struct Interval
 {
 	float min;
@@ -17,30 +27,96 @@ enum struct SoundParams
 	Interval cooldown;
 }
 
-enum struct SoundPack
+methodmap SoundList < ArrayList
 {
-	ArrayList hurtSounds;
-	ArrayList deathSounds;
-	ArrayList viewSounds;
-	ArrayList selectSounds;
-	ArrayList jumpSounds;
-	
-	void Close()
+	public SoundList()
 	{
-		delete this.hurtSounds;
-		delete this.deathSounds;
-		delete this.viewSounds;
-		delete this.selectSounds;
-		delete this.jumpSounds;
+		return view_as<SoundList>(new ArrayList());
 	}
 
-	void Precache()
+	public void Precache()
 	{
-		PrecacheSoundsInList(this.hurtSounds);
-		PrecacheSoundsInList(this.deathSounds);
-		PrecacheSoundsInList(this.viewSounds);
-		PrecacheSoundsInList(this.selectSounds);
-		PrecacheSoundsInList(this.jumpSounds);
+		int len = this.Length;
+		char path[PLATFORM_MAX_PATH];
+		
+		for (int i = 0; i < len; i++)
+		{
+			this.GetString(i, path, sizeof(path));
+			PrecacheSound(path, true);
+		}
+	}
+}
+
+methodmap SoundPack < StringMap
+{
+	public SoundPack()
+	{
+		return view_as<SoundPack>(new StringMap());
+	}
+	
+	public void AddSoundList(const char[] soundType, SoundList soundList)
+	{
+		char soundTypeNorm[MODELCHOOSER_MAX_NAME];
+		_modelchooser_normalize_name(soundType, soundTypeNorm);
+
+		if (!this.SetValue(soundTypeNorm, soundList, false))
+		{
+			ThrowError("Sound type \"%s\" already added", soundTypeNorm);
+		}
+	}
+
+	public SoundList GetSoundList(const char[] soundType)
+	{
+		if (!this.Size)
+			return null;
+		
+		char soundTypeNorm[MODELCHOOSER_MAX_NAME];
+		_modelchooser_normalize_name(soundType, soundTypeNorm);
+
+		SoundList soundList;
+		this.GetValue(soundTypeNorm, soundList);
+		return soundList;
+	}
+
+	public void Clear()
+	{
+		StringMapSnapshot snapshot = this.Snapshot();
+		SoundList soundList;
+		for (int i = 0; i < snapshot.Length; i++)
+		{
+			int keySize = snapshot.KeyBufferSize(i);
+			char[] key = new char[keySize];
+			snapshot.GetKey(i, key, keySize);
+			if (this.GetValue(key, soundList))
+			{
+				soundList.Close();
+			}
+		}
+		snapshot.Close();
+		view_as<StringMap>(this).Clear();
+	}
+
+	public void Close()
+	{
+		this.Clear();
+		view_as<StringMap>(this).Close();
+	}
+
+	public void Precache()
+	{
+		StringMapSnapshot snapshot = this.Snapshot();
+		SoundList soundList;
+		for (int i = 0; i < snapshot.Length; i++)
+		{
+			int keySize = snapshot.KeyBufferSize(i);
+			char[] key = new char[keySize];
+			snapshot.GetKey(i, key, keySize);
+			if (this.GetValue(key, soundList))
+			{
+				soundList.Precache();
+			}
+		}
+		snapshot.Close();
 	}
 }
 
@@ -51,6 +127,30 @@ methodmap SoundMap < StringMap
 		return view_as<SoundMap>(new StringMap());
 	}
 	
+	public void AddSoundPack(const char[] name, SoundPack pack)
+	{
+		char nameNorm[MODELCHOOSER_MAX_NAME];
+		_modelchooser_normalize_name(name, nameNorm);
+
+		if (!this.SetValue(nameNorm, pack, false))
+		{
+			ThrowError("Sound pack \"%s\" already added", nameNorm);
+		}
+	}
+
+	public SoundPack GetSoundPack(const char[] name)
+	{
+		if (!this.Size)
+			return null;
+		
+		char nameNorm[MODELCHOOSER_MAX_NAME];
+		_modelchooser_normalize_name(name, nameNorm);
+
+		SoundPack soundPack;
+		this.GetValue(nameNorm, soundPack);
+		return soundPack;
+	}
+
 	public void Clear()
 	{
 		StringMapSnapshot snapshot = this.Snapshot();
@@ -60,11 +160,19 @@ methodmap SoundMap < StringMap
 			int keySize = snapshot.KeyBufferSize(i);
 			char[] key = new char[keySize];
 			snapshot.GetKey(i, key, keySize);
-			this.GetArray(key, soundPack, sizeof(SoundPack));
-			soundPack.Close();
+			if (this.GetValue(key, soundPack))
+			{
+				soundPack.Close();
+			}
 		}
 		snapshot.Close();
 		view_as<StringMap>(this).Clear();
+	}
+
+	public void Close()
+	{
+		this.Clear();
+		view_as<StringMap>(this).Close();
 	}
 
 	public void Precache()
@@ -76,8 +184,10 @@ methodmap SoundMap < StringMap
 			int keySize = snapshot.KeyBufferSize(i);
 			char[] key = new char[keySize];
 			snapshot.GetKey(i, key, keySize);
-			this.GetArray(key, soundPack, sizeof(SoundPack));
-			soundPack.Precache();
+			if (this.GetValue(key, soundPack))
+			{
+				soundPack.Precache();
+			}
 		}
 		snapshot.Close();	
 	}
@@ -144,10 +254,10 @@ enum struct PlayerAnimation
 
 enum struct PlayerModel
 {
-	char name[MAX_MODELNAME];
+	char name[MODELCHOOSER_MAX_NAME];
 	char path[PLATFORM_MAX_PATH];
 	char team[MAX_TEAM_NAME_LENGTH];
-	char sounds[MAX_SOUNDSNAME];
+	char sounds[MODELCHOOSER_MAX_NAME];
 	char vmBodyGroups[256];
 	SoundParams jumpSndParams;
 	Interval hurtSndHP;
@@ -158,6 +268,7 @@ enum struct PlayerModel
 
 	ArrayList skins;
 	ArrayList bodyGroups;
+	StringMap customProperties;
 
 	PlayerAnimation anim_idle;
 	PlayerAnimation anim_walk;
@@ -171,6 +282,7 @@ enum struct PlayerModel
 	{
 		this.skins.Close();
 		this.bodyGroups.Close();
+		this.customProperties.Close();
 		this.anim_idle.Close();
 		this.anim_walk.Close();
 		this.anim_run.Close();
@@ -187,7 +299,11 @@ enum struct PlayerModel
 
 	int GetTeamNum()
 	{
-		int team = String_IsNumeric(this.team) ? StringToInt(this.team) : FindTeamByName(this.team);
+		int team;
+		if (!StringToIntEx(this.team, team))
+		{
+			team = FindTeamByName(this.team);
+		}
 		if (team < 0 || team >= MAX_TEAMS)
 		{
 			if (GetTeamCount() > 2)
@@ -241,16 +357,12 @@ methodmap ModelList < ArrayList
 		view_as<ArrayList>(this).Clear();
 	}
 	
-	public int FindByName(const char[] modelName, PlayerModel model)
+	public int FindByName(const char[] modelName)
 	{
-		int len = this.Length;
-		for (int i = 0; i < len; i++)
-		{
-			this.GetArray(i, model);
-			if (StrEqual(model.name, modelName, false))
-				return i;
-		}
-		return -1;
+		char nameNorm[MODELCHOOSER_MAX_NAME];
+		_modelchooser_normalize_name(modelName, nameNorm);
+
+		return this.FindString(nameNorm, PlayerModel::name);
 	}
 
 	public void Precache()
@@ -310,7 +422,7 @@ enum struct PersistentPreferences
 		
 		char name[32];
 		char suffix[4];
-		if (team > TEAM_SPECTATOR)
+		if (team > 1)
 		{
 			FormatEx(suffix, sizeof(suffix), "#%d", team);
 		}
@@ -323,5 +435,14 @@ enum struct PersistentPreferences
 
 		FormatEx(name, sizeof(name), "playermodel_body%s", suffix);
 		this.body = new Cookie(name, "Stores player model body type preference", CookieAccess_Protected);
+	}
+}
+
+void _modelchooser_normalize_name(const char[] name, char nameNorm[MODELCHOOSER_MAX_NAME])
+{
+	strcopy(nameNorm, sizeof(nameNorm), name);
+	for (int i = 0; nameNorm[i] != '\0'; i++)
+	{
+		nameNorm[i] = CharToUpper(nameNorm[i]);
 	}
 }
