@@ -3,6 +3,8 @@
 # Ultimate ModelChooser
  A "**_better_**" player model chooser for Sourcemod.
 
+https://github.com/user-attachments/assets/be5919ba-efc7-433a-91b0-d81289a9c5a4
+
 #### Features
 - Third-person model browser
 - Custom per-model sounds (all) and animations (hl2dm only)
