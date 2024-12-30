@@ -256,6 +256,10 @@ public void Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
 		int team = currentTeam[client] = event.GetInt("team");
 		if (team != oldTeam)
 		{
+			if (IsInMenu(client))
+			{
+				ExitModelChooser(client, true, true);
+			}
 			if (team == TEAM_UNASSIGNED || team > TEAM_SPECTATOR)
 			{
 				ReloadClientModels(client);
