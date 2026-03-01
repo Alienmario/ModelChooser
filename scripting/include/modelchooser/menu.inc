@@ -286,19 +286,19 @@ void UpdateMenuHud(int client, PlayerModel model, bool initital = false)
 
 	if (showBody)
 	{
-		Format(text, sizeof(text), "%s\n⇣ %3d / %-3d ⇡", text, menuSelection[client].body + 1, menuSelection[client].bodyCount);
+		Format(text, sizeof(text), "%s\n↑ %3d / %-3d ↓", text, menuSelection[client].body + 1, menuSelection[client].bodyCount);
 	}
 
 	if (showSkin)
 	{
-		Format(text, sizeof(text), "%s\n⇠ %3d / %-3d ⇢", text, menuSelection[client].skin + 1, menuSelection[client].skinCount);
+		Format(text, sizeof(text), "%s\n← %3d / %-3d →", text, menuSelection[client].skin + 1, menuSelection[client].skinCount);
 	}
 	
 	SetHudTextParamsEx(cvHudText1x.FloatValue, cvHudText1y.FloatValue, 60.0, color, {200, 200, 200, 200}, 1, 0.1, initital? 1.2 : 0.0, 0.15);
 	ShowHudText(client, topHudChanToggle[client], text);
 
 	// Bottom
-	Format(text, sizeof(text), "◀ L %12d / %-12d R ▶", menuSelection[client].index + 1, selectableModels[client].Length);
+	Format(text, sizeof(text), "◀ %12d / %-12d ▶", menuSelection[client].index + 1, selectableModels[client].Length);
 	SetHudTextParamsEx(cvHudText2x.FloatValue, cvHudText2y.FloatValue, 9999999.0, DEFAULT_HUD_COLOR, _, 1, 0.0, initital? 1.2 : 0.0, 1.0);
 	ShowHudText(client, bottomHudChanToggle[client], text);
 	
@@ -361,7 +361,24 @@ public void Timer_MenuInit2(Handle timer, int userId)
 		{
 			UpdateMenuHud(client, model, true);
 		}
+		if (!controlsHintDisplayed[client])
+		{
+			ShowControlsHint(client);
+		}
 	}
+}
+
+void ShowControlsHint(int client)
+{
+	if (GetEngineVersion() == Engine_BlackMesa)
+	{
+		Client_PrintKeyHintText(client, "Browse models: %%+attack%% %%+attack2%%Customize model: %%+forward%% %%+moveleft%% %%+back%% %%+moveright%%Exit: %%+jump%% %%+use%%");
+	}
+	else
+	{
+		PrintHintText(client, "Browse models: %%+attack%%/%%+attack2%%  Customize model: %%+forward%%/%%+moveleft%%/%%+back%%/%%+moveright%%  Exit: %%+jump%%/%%+use%%");
+	}
+	controlsHintDisplayed[client] = true;
 }
 
 #define MENU_SCROLL_DELAY_MAX 0.6

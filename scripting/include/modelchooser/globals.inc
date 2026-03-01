@@ -38,6 +38,9 @@ int bottomHudChanToggle[MAXPLAYERS + 1] = {2, ...};
 // Delayed hud init timer
 Handle tMenuInit[MAXPLAYERS + 1];
 
+// Whether control keys hint has been displayed to a player
+bool controlsHintDisplayed[MAXPLAYERS + 1];
+
 // Team number cached from changeteam event hook
 int currentTeam[MAXPLAYERS + 1];
 

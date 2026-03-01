@@ -207,6 +207,7 @@ public void OnClientConnected(int client)
 	tMenuInit[client] = null;
 	clientInitChecks[client] = 3;
 	currentTeam[client] = 0;
+	controlsHintDisplayed[client] = false;
 }
 
 public void OnClientPutInServer(int client)
