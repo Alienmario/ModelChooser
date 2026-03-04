@@ -96,6 +96,7 @@ void ExitModelChooser(int client, bool silent = false, bool cancel = false)
 	StopSound(client, SNDCHAN_BODY, lastPlayedSound[client]);
 	SetEntPropFloat(client, Prop_Data, "m_flNextAttack", GetGameTime() + 0.25);
 	ToggleMenuLock(client, false);
+	FixFirstpersonWeapons(client);
 	delete tMenuInit[client];
 	
 	PlayerModel model;
@@ -119,7 +120,6 @@ void ExitModelChooser(int client, bool silent = false, bool cancel = false)
 	}
 
 	menuSelection[client].Reset();
-	ForceFullUpdate(client);
 }
 
 void OnMenuModelSelection(int client, bool initial = false, bool scrolling = false)

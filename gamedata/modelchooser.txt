@@ -68,19 +68,6 @@
 				"windows"	"371"
 				"linux"		"372"
 			}
-			
-			// Engine
-
-			"CBaseServer::GetClient" // CBaseServer::GetClient(int)
-			{
-				"windows"	"6"
-				"linux"		"7"
-			}
-			"CBaseClient::UpdateAcknowledgedFramecount" // CBaseClient::UpdateAcknowledgedFramecount(int)
-			{
-				"windows"	"4"
-				"linux"		"44"
-			}
 		}
 		"Signatures"
 		{
@@ -109,19 +96,6 @@
 			{
 				"windows"	"385"
 				"linux"		"386"
-			}
-
-			// Engine
-
-			"CBaseServer::GetClient" // CBaseServer::GetClient(int)
-			{
-				"windows"	"6"
-				"linux"		"7"
-			}
-			"CBaseClient::UpdateAcknowledgedFramecount" // CBaseClient::UpdateAcknowledgedFramecount(int)
-			{
-				"windows"	"4"
-				"linux"		"44"
 			}
 		}
 	}

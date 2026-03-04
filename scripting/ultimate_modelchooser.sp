@@ -78,7 +78,6 @@ public void OnPluginStart()
 	cvHudText1y = CreateConVar("modelchooser_hudtext_y", "0.01", "Hudtext 1 Y coordinate, from 0 (top) to 1 (bottom), -1 is the center");
 	cvHudText2x = CreateConVar("modelchooser_hudtext2_x", "-1", "Hudtext 2 X coordinate, from 0 (left) to 1 (right), -1 is the center");
 	cvHudText2y = CreateConVar("modelchooser_hudtext2_y", "0.95", "Hudtext 2 Y coordinate, from 0 (top) to 1 (bottom), -1 is the center");
-	cvForceFullUpdate = CreateConVar("modelchooser_forcefullupdate", "1", "Fixes weapon prediction glitch caused by going thirdperson, recommended to keep on unless you run into issues");
 	mp_forcecamera = FindConVar("mp_forcecamera");
 
 	cvTeamBased.AddChangeHook(Hook_TeamBasedCvarChanged);
@@ -118,30 +117,6 @@ public void OnPluginStart()
 		if (!callResetSequence)
 			LogError("Custom animations will not work");
 	}
-	
-	char szGetClient[] = "CBaseServer::GetClient";
-	StartPrepSDKCall(SDKCall_Server);
-	if (PrepSDKCall_SetFromConf(gamedata, SDKConf_Virtual, szGetClient))
-	{
-		PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
-		PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
-		if (!(callGetClient = EndPrepSDKCall()))
-			LogError("Could not prep SDK call %s", szGetClient);
-	}
-	else LogError("Could not obtain gamedata offset %s", szGetClient);
-	
-	char szUpdateAcknowledgedFramecount[] = "CBaseClient::UpdateAcknowledgedFramecount";
-	StartPrepSDKCall(SDKCall_Raw);
-	if (PrepSDKCall_SetFromConf(gamedata, SDKConf_Virtual, szUpdateAcknowledgedFramecount))
-	{
-		PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
-		if (!(callUpdateAcknowledgedFramecount = EndPrepSDKCall()))
-			LogError("Could not prep SDK call %s", szUpdateAcknowledgedFramecount);
-	}
-	else LogError("Could not obtain gamedata offset %s", szUpdateAcknowledgedFramecount);
-	
-	if (!callGetClient || !callUpdateAcknowledgedFramecount)
-		LogError("Prediction fix \"modelchooser_forcefullupdate\" will not work");
 	
 	gamedata.Close();
 }
@@ -577,13 +552,4 @@ SoundPack GetSoundPack(const PlayerModel model, bool emptyDefault = true)
 		emptySoundPack = new SoundPack();
 	}
 	return emptySoundPack;
-}
-
-void ForceFullUpdate(int client)
-{
-	if (cvForceFullUpdate.BoolValue && callGetClient && callUpdateAcknowledgedFramecount)
-	{
-		int pClient = SDKCall(callGetClient, client - 1) - 4;
-		SDKCall(callUpdateAcknowledgedFramecount, pClient, -1);
-	}
 }

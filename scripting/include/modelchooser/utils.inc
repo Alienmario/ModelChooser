@@ -11,6 +11,11 @@ Action Hook_TransmitToOwnerOnly(int entity, int client)
 	return (Entity_GetOwner(entity) == client) ? Plugin_Continue : Plugin_Stop;
 }
 
+Action Hook_TransmitToNonOwnersOnly(int entity, int client)
+{
+	return (Entity_GetOwner(entity) != client) ? Plugin_Continue : Plugin_Stop;
+}
+
 stock void LoadDHookDetour(GameData pGameConfig, DynamicDetour& pHandle, const char[] szFuncName, DHookCallback pCallbackPre = null, DHookCallback pCallbackPost = null)
 {
 	pHandle = DynamicDetour.FromConf(pGameConfig, szFuncName);
@@ -61,8 +66,8 @@ stock void SetEntityEffects(int entity, int effects)
 }
 
 /**
- * HL2DM displays all carried weapons' shadows in thirdperson.
- * We fix this to only show active weapon.
+ * HL2DM renders all carried weapons' shadows in thirdperson.
+ * We fix this to only show the active weapon.
  */
 stock void FixThirdpersonWeapons(int client)
 {
@@ -80,10 +85,21 @@ stock void FixThirdpersonWeapons(int client)
 	}
 }
 
-stock int EntIndexToEntRefEx(int ent)
+/**
+ * Attempts to fix clientside prediction errors after exiting thirdperson.
+ */
+stock void FixFirstpersonWeapons(int client)
 {
-	int index = EntRefToEntIndex(ent);
-	return index == -1? -1 : EntIndexToEntRef(index);
+	LOOP_CLIENTWEAPONS(client, weapon, index)
+	{
+		SDKHook(weapon, SDKHook_SetTransmit, Hook_TransmitToNonOwnersOnly);
+		CreateTimer(0.1, Timer_FixFirstpersonWeapons, EntIndexToEntRef(weapon), TIMER_FLAG_NO_MAPCHANGE);
+	}
+}
+
+stock void Timer_FixFirstpersonWeapons(Handle timer, int weapon)
+{
+	SDKUnhook(weapon, SDKHook_SetTransmit, Hook_TransmitToNonOwnersOnly);
 }
 
 // Copy pasta of "SetBodygroup" from the SDK
