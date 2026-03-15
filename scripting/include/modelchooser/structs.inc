@@ -4,11 +4,11 @@
 #define MODELCHOOSER_MAX_NAME 64
 
 #if !defined MAX_TEAMS
-#define MAX_TEAMS				32	// Max number of teams in a game
+  #define MAX_TEAMS				32	// Max number of teams in a game
 #endif
 
 #if !defined MAX_TEAM_NAME_LENGTH
-#define MAX_TEAM_NAME_LENGTH	32	// Max length of a team's name
+  #define MAX_TEAM_NAME_LENGTH	32	// Max length of a team's name
 #endif
 
 enum struct Interval
@@ -57,7 +57,7 @@ methodmap SoundPack < StringMap
 	public void AddSoundList(const char[] soundType, SoundList soundList)
 	{
 		char soundTypeNorm[MODELCHOOSER_MAX_NAME];
-		_modelchooser_normalize_name(soundType, soundTypeNorm);
+		_modelchooser_normalize(soundType, soundTypeNorm);
 
 		if (!this.SetValue(soundTypeNorm, soundList, false))
 		{
@@ -71,7 +71,7 @@ methodmap SoundPack < StringMap
 			return null;
 		
 		char soundTypeNorm[MODELCHOOSER_MAX_NAME];
-		_modelchooser_normalize_name(soundType, soundTypeNorm);
+		_modelchooser_normalize(soundType, soundTypeNorm);
 
 		SoundList soundList;
 		this.GetValue(soundTypeNorm, soundList);
@@ -130,7 +130,7 @@ methodmap SoundMap < StringMap
 	public void AddSoundPack(const char[] name, SoundPack pack)
 	{
 		char nameNorm[MODELCHOOSER_MAX_NAME];
-		_modelchooser_normalize_name(name, nameNorm);
+		_modelchooser_normalize(name, nameNorm);
 
 		if (!this.SetValue(nameNorm, pack, false))
 		{
@@ -144,7 +144,7 @@ methodmap SoundMap < StringMap
 			return null;
 		
 		char nameNorm[MODELCHOOSER_MAX_NAME];
-		_modelchooser_normalize_name(name, nameNorm);
+		_modelchooser_normalize(name, nameNorm);
 
 		SoundPack soundPack;
 		this.GetValue(nameNorm, soundPack);
@@ -320,15 +320,15 @@ enum struct PlayerModel
 		return this.skins.Get(index);
 	}
 
-	int GetBody(int index)
-	{
-		return this.bodyGroups.Get(index);
-	}
-
 	int IndexOfSkin(int skin, int fallback = 0)
 	{
 		int i = this.skins.FindValue(skin);
 		return i == -1 ? fallback : i;
+	}
+	
+	int GetBody(int index)
+	{
+		return this.bodyGroups.Get(index);
 	}
 
 	int IndexOfBody(int body, int fallback = 0)
@@ -360,7 +360,7 @@ methodmap ModelList < ArrayList
 	public int FindByName(const char[] modelName)
 	{
 		char nameNorm[MODELCHOOSER_MAX_NAME];
-		_modelchooser_normalize_name(modelName, nameNorm);
+		_modelchooser_normalize(modelName, nameNorm);
 
 		return this.FindString(nameNorm, PlayerModel::name);
 	}
@@ -438,7 +438,8 @@ enum struct PersistentPreferences
 	}
 }
 
-void _modelchooser_normalize_name(const char[] name, char nameNorm[MODELCHOOSER_MAX_NAME])
+/* Needs to be here as structs.inc is included for rawdog api */
+void _modelchooser_normalize(const char[] name, char nameNorm[MODELCHOOSER_MAX_NAME])
 {
 	strcopy(nameNorm, sizeof(nameNorm), name);
 	for (int i = 0; nameNorm[i] != '\0'; i++)

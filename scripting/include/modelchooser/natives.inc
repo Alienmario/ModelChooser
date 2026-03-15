@@ -101,16 +101,16 @@ public any Native_SelectModel(Handle plugin, int numParams)
 public any Native_IsClientChoosing(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	return IsInMenu(client);
+	return UI.IsOpen(client) || UI.IsOpening(client);
 }
 
 public any Native_OpenChooser(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	bool printError = GetNativeCell(2);
-	if (PreEnterCheck(client, printError))
+	if (UI.PreEnterCheck(client, printError))
 	{
-		EnterModelChooser(client);
+		UI.Enter(client);
 		return true;
 	}
 	return false;
@@ -137,11 +137,11 @@ public any Native_PlayRandomSound(Handle plugin, int numParams)
 		
 		if (stopLast)
 		{
-			StopSound(client, SNDCHAN_BODY, lastPlayedSound[client]);
-			StopSound(client, SNDCHAN_STATIC, lastPlayedSound[client]);
+			Sounds.StopLast(client, SNDCHAN_BODY);
+			Sounds.StopLast(client, SNDCHAN_STATIC);
 		}
 
-		return PlayRandomSound(soundPack.GetSoundList(soundType), client,
+		return Sounds.PlayRandom(soundPack.GetSoundList(soundType), client,
 			.channel = SNDCHAN_STATIC, .toAll = toAll, .pitchMin = pitch, .pitchMax = pitch, .volume = volume
 		);
 	}

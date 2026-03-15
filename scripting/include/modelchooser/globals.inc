@@ -19,9 +19,6 @@ SelectionData menuSelection[MAXPLAYERS + 1];
 // Map containing names of unlocked models
 StringMap unlockedModels[MAXPLAYERS + 1];
 
-// Used for stopping
-char lastPlayedSound[MAXPLAYERS + 1][PLATFORM_MAX_PATH];
-
 // Flag for playing hurt sound once
 int playedHurtSoundAt[MAXPLAYERS + 1] = {-1, ...};
 
@@ -31,16 +28,6 @@ float nextJumpSound[MAXPLAYERS + 1];
 // Counter for # of checks to pass until client models can be initialized
 int clientInitChecks[MAXPLAYERS + 1];
 
-// Hud channel toggles (bi-channel switching allows displaying proper colors)
-int topHudChanToggle[MAXPLAYERS + 1];
-int bottomHudChanToggle[MAXPLAYERS + 1] = {2, ...};
-
-// Delayed hud init timer
-Handle tMenuInit[MAXPLAYERS + 1];
-
-// Whether control keys hint has been displayed to a player
-bool controlsHintDisplayed[MAXPLAYERS + 1];
-
 // Team number cached from changeteam event hook
 int currentTeam[MAXPLAYERS + 1];
 
@@ -49,11 +36,6 @@ SmartDM_FileSet downloads;
 
 // Hooks
 DynamicHook hkSetModel;
-DynamicHook hkDeathSound;
-DynamicHook hkSetAnimation;
-
-// Calls
-Handle callResetSequence;
 
 // Persistence
 PersistentPreferences persistentPreferences[MAX_TEAMS];

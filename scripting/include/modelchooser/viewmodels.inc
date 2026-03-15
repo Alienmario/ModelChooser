@@ -20,7 +20,7 @@ void UpdateViewModels(int client)
 	}
 }
 
-void UpdateViewModel(int vm)
+static void UpdateViewModel(int vm)
 {
 	vm = EntRefToEntIndex(vm);
 	if (vm != -1)

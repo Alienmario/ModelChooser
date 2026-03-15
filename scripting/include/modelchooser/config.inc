@@ -1,43 +1,46 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-void LoadConfig()
+methodmap Config
 {
-	char szConfigPath[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, szConfigPath, sizeof(szConfigPath), "configs/player_models.cfg");
-	if (!FileExists(szConfigPath))
-		SetFailState("File %s doesn't exist", szConfigPath);
-	
-	KeyValues kv = new KeyValues("");
-	char section[32];
-	if (!(kv.ImportFromFile(szConfigPath) && kv.GetSectionName(section, sizeof(section)) && strcmp(section, "ModelSystem", false) == 0))
-		SetFailState("Couldn't import %s into KeyValues", szConfigPath);
-		
-	if (kv.GotoFirstSubKey())
+	public static void Load()
 	{
-		do
+		char szConfigPath[PLATFORM_MAX_PATH];
+		BuildPath(Path_SM, szConfigPath, sizeof(szConfigPath), "configs/player_models.cfg");
+		if (!FileExists(szConfigPath))
+			SetFailState("File %s doesn't exist", szConfigPath);
+		
+		KeyValues kv = new KeyValues("");
+		char section[32];
+		if (!(kv.ImportFromFile(szConfigPath) && kv.GetSectionName(section, sizeof(section)) && strcmp(section, "ModelSystem", false) == 0))
+			SetFailState("Couldn't import %s into KeyValues", szConfigPath);
+			
+		if (kv.GotoFirstSubKey())
 		{
-			if (kv.GetSectionName(section, sizeof(section)))
+			do
 			{
-				if (StrEqual(section, "Models", false))
+				if (kv.GetSectionName(section, sizeof(section)))
 				{
-					ParseModels(kv);
-				}
-				else if (StrEqual(section, "Sounds", false))
-				{
-					ParseSounds(kv);
+					if (StrEqual(section, "Models", false))
+					{
+						ParseModels(kv);
+					}
+					else if (StrEqual(section, "Sounds", false))
+					{
+						ParseSounds(kv);
+					}
 				}
 			}
+			while (kv.GotoNextKey());
 		}
-		while (kv.GotoNextKey());
-	}
-	delete kv;
+		delete kv;
 
-	Call_StartForward(fwdOnConfigLoaded);
-	Call_Finish();
+		Call_StartForward(fwdOnConfigLoaded);
+		Call_Finish();
+	}
 }
 
-void ParseModels(KeyValues kv)
+static void ParseModels(KeyValues kv)
 {
 	StringMap duplicityChecker = new StringMap();
 	char buffer[128];
@@ -119,7 +122,7 @@ void ParseModels(KeyValues kv)
 	delete duplicityChecker;
 }
 
-void ParseAnims(KeyValues kv, StudioHdr studiohdr, PlayerModel model)
+static void ParseAnims(KeyValues kv, StudioHdr studiohdr, PlayerModel model)
 {
 	StringMap act2seq = new StringMap();
 	StringMap seqNums = new StringMap();
@@ -162,7 +165,7 @@ void ParseAnims(KeyValues kv, StudioHdr studiohdr, PlayerModel model)
 	seqNums.Close();
 }
 
-void ParseAnim(KeyValues kv, PlayerModel model, PlayerAnimation anim, const char[] key, StringMap act2seq, StringMap seqNums)
+static void ParseAnim(KeyValues kv, PlayerModel model, PlayerAnimation anim, const char[] key, StringMap act2seq, StringMap seqNums)
 {
 	char szSearchName[MAX_ANIM_NAME];
 
@@ -199,7 +202,7 @@ void ParseAnim(KeyValues kv, PlayerModel model, PlayerAnimation anim, const char
 	}
 }
 
-void ParseSounds(KeyValues kv)
+static void ParseSounds(KeyValues kv)
 {
 	if (kv.GotoFirstSubKey())
 	{
@@ -216,7 +219,7 @@ void ParseSounds(KeyValues kv)
 	}
 }
 
-SoundPack ParseSoundPack(KeyValues kv)
+static SoundPack ParseSoundPack(KeyValues kv)
 {
 	SoundPack soundPack = new SoundPack();
 	if (kv.GotoFirstSubKey())
@@ -235,7 +238,7 @@ SoundPack ParseSoundPack(KeyValues kv)
 	return soundPack;
 }
 
-ArrayList ParseFileItems(KeyValues kv, bool precache, const char[] folderType = "")
+static ArrayList ParseFileItems(KeyValues kv, bool precache, const char[] folderType = "")
 {
 	ArrayList files = new ArrayList(PLATFORM_MAX_PATH);
 	char path[PLATFORM_MAX_PATH];
@@ -261,43 +264,7 @@ ArrayList ParseFileItems(KeyValues kv, bool precache, const char[] folderType = 
 	return files;
 }
 
-ArrayList ParseDelimitedIntList(KeyValues kv, const char[] key)
-{
-	if (!kv.JumpToKey(key))
-		return null;
-	
-	char value[2048], buffer[32];
-	kv.GetString(NULL_STRING, value, sizeof(value));
-	
-	ArrayList list = new ArrayList();
-	
-	for (int i, n;;)
-	{
-		n = SplitString(value[i], ";", buffer, sizeof(buffer));
-		if (n == -1)
-		{
-			// remainder
-			strcopy(buffer, sizeof(buffer), value[i]);
-			TrimString(buffer);
-			if (buffer[0] != EOS)
-			{
-				list.Push(StringToInt(buffer));
-			}
-			break;
-		}
-		i += n;
-		TrimString(buffer);
-		if (buffer[0] != EOS)
-		{
-			list.Push(StringToInt(buffer));
-		}
-	}
-
-	kv.GoBack();
-	return list;
-}
-
-void ParseCustomProperties(KeyValues kv, StringMap map)
+static void ParseCustomProperties(KeyValues kv, StringMap map)
 {
 	if (kv.GotoFirstSubKey(false))
 	{
@@ -316,7 +283,7 @@ void ParseCustomProperties(KeyValues kv, StringMap map)
 	}
 }
 
-void ParseInterval(KeyValues kv, Interval interval, const char[] key, float defualtMin = 0.0, float defaultMax = 0.0)
+static void ParseInterval(KeyValues kv, Interval interval, const char[] key, float defualtMin = 0.0, float defaultMax = 0.0)
 {
 	char val[32];
 	kv.GetString(key, val, sizeof(val), "");
@@ -340,7 +307,7 @@ void ParseInterval(KeyValues kv, Interval interval, const char[] key, float defu
 	interval.min = interval.max = StringToFloat(val);
 }
 
-ArrayList ProcessSkins(StudioHdr studio, ArrayList list)
+static ArrayList ProcessSkins(StudioHdr studio, ArrayList list)
 {
 	int numSkins = studio.numskinfamilies;
 
@@ -372,7 +339,7 @@ ArrayList ProcessSkins(StudioHdr studio, ArrayList list)
 	return list;
 }
 
-ArrayList ProcessBodyGroups(StudioHdr studio, ArrayList list)
+static ArrayList ProcessBodyGroups(StudioHdr studio, ArrayList list)
 {
 	int numBodyGroups;
 	for (int i = studio.numbodyparts - 1; i >= 0; i--)
@@ -406,5 +373,41 @@ ArrayList ProcessBodyGroups(StudioHdr studio, ArrayList list)
 		list.Push(0);
 	}
 
+	return list;
+}
+
+static ArrayList ParseDelimitedIntList(KeyValues kv, const char[] key)
+{
+	if (!kv.JumpToKey(key))
+		return null;
+	
+	char value[2048], buffer[32];
+	kv.GetString(NULL_STRING, value, sizeof(value));
+	
+	ArrayList list = new ArrayList();
+	
+	for (int i, n;;)
+	{
+		n = SplitString(value[i], ";", buffer, sizeof(buffer));
+		if (n == -1)
+		{
+			// remainder
+			strcopy(buffer, sizeof(buffer), value[i]);
+			TrimString(buffer);
+			if (buffer[0] != EOS)
+			{
+				list.Push(StringToInt(buffer));
+			}
+			break;
+		}
+		i += n;
+		TrimString(buffer);
+		if (buffer[0] != EOS)
+		{
+			list.Push(StringToInt(buffer));
+		}
+	}
+
+	kv.GoBack();
 	return list;
 }

@@ -17,18 +17,49 @@ enum PLAYER_ANIM
 	PLAYER_LEAVE_AIMING,
 };
 
-public MRESReturn Hook_SetAnimation(int client, DHookParam hParams)
+static DynamicHook g_hkSetAnimation;
+static Handle g_hResetSequence;
+
+methodmap Anims
+{
+	public static void Init(GameData gamedata)
+	{
+		LoadDHookVirtual(gamedata, g_hkSetAnimation, "CBasePlayer::SetAnimation");
+
+		if (GetEngineVersion() == Engine_HL2DM)
+		{
+			char szResetSequence[] = "CBaseAnimating::ResetSequence";
+			StartPrepSDKCall(SDKCall_Entity);
+			if (PrepSDKCall_SetFromConf(gamedata, SDKConf_Signature, szResetSequence))
+			{
+				PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
+				if (!(g_hResetSequence = EndPrepSDKCall()))
+					LogError("Could not prep SDK call %s", szResetSequence);
+			}
+			else LogError("Could not obtain gamedata signature %s", szResetSequence);
+		
+			if (!g_hResetSequence) LogError("Custom animations will not work");
+		}
+	}
+
+	public static void PlayerInit(int client)
+	{
+		DHookEntity(g_hkSetAnimation, false, client, _, Hook_SetAnimation);
+	}
+}
+
+static MRESReturn Hook_SetAnimation(int client, DHookParam hParams)
 {
 	PLAYER_ANIM playerAnim = hParams.Get(1);
 
 	float playbackRate = 1.0;
 	int sequence = GetCustomSequenceForAnim(client, playerAnim, playbackRate);
-	if (sequence > -1 && callResetSequence)
+	if (sequence > -1 && g_hResetSequence)
 	{
 		SetEntPropFloat(client, Prop_Data, "m_flPlaybackRate", playbackRate);
 		if (GetEntProp(client, Prop_Send, "m_nSequence") != sequence)
 		{
-			SDKCall(callResetSequence, client, sequence);
+			SDKCall(g_hResetSequence, client, sequence);
 			SetEntPropFloat(client, Prop_Data, "m_flCycle", 0.0);
 		}
 		return MRES_Supercede;
@@ -36,7 +67,7 @@ public MRESReturn Hook_SetAnimation(int client, DHookParam hParams)
 	return MRES_Ignored;
 }
 
-int GetCustomSequenceForAnim(int client, PLAYER_ANIM playerAnim, float &playbackRate)
+static int GetCustomSequenceForAnim(int client, PLAYER_ANIM playerAnim, float &playbackRate)
 {
 	PlayerModel model;
 	if (GetSelectedModelAuto(client, model))
@@ -61,7 +92,7 @@ int GetCustomSequenceForAnim(int client, PLAYER_ANIM playerAnim, float &playback
 			float time = GetGameTime();
 			if (time > nextJumpSound[client])
 			{
-				PlayRandomSound(GetSoundPack(model).GetSoundList("jump"), client, client, SNDCHAN_STATIC, true, JUMP_PITCH_MIN, JUMP_PITCH_MAX, JUMP_VOL);
+				Sounds.PlayRandom(GetSoundPack(model).GetSoundList("jump"), client, client, SNDCHAN_STATIC, true, JUMP_PITCH_MIN, JUMP_PITCH_MAX, JUMP_VOL);
 				nextJumpSound[client] = time + model.jumpSndParams.cooldown.Rand();
 			}
 		}

@@ -2,7 +2,7 @@
 
 #define MODELCHOOSER_RAWDOG_API 	/* Enable deep access? */
 #undef REQUIRE_PLUGIN 				/* Is ModelChooser plugin dependency required or optional? */
-#include <modelchooser>
+#include <modelchooser>             /* Includes modelchooser natives, internal structures if deep access is enabled */
 
 public void OnLibraryAdded(const char[] name)
 {
