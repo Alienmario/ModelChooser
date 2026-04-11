@@ -17,6 +17,48 @@ static int g_iSecondaryHudChanToggle[MAXPLAYERS + 1] = {2, ...};
 // Whether control keys hint has been displayed to a player
 static bool g_bControlsHintDisplayed[MAXPLAYERS + 1];
 
+enum struct ModelOptionsSequenceHelper
+{
+	bool bSkinSelection;
+	int iNumBodyGroups;
+	int iTotal;
+
+	void Init(PlayerModel model)
+	{
+		this.bSkinSelection = model.SkinCount() > 1;
+		this.iNumBodyGroups = model.BodyGroupCount();
+		this.iTotal = view_as<int>(this.bSkinSelection) + this.iNumBodyGroups;
+	}
+
+	int GetTotal()
+	{
+		return this.iTotal;
+	}
+
+	int GetBodyGroupStart()
+	{
+		return view_as<int>(this.bSkinSelection);
+	}
+	int GetBodyGroupEnd()
+	{
+		return this.GetBodyGroupStart() + this.iNumBodyGroups;
+	}
+	int ToBodyGroupIndex(int idx)
+	{
+		return idx - this.GetBodyGroupStart();
+	}
+
+	bool IsSkin(int idx)
+	{
+		return this.bSkinSelection && idx == 0;
+	}
+	bool IsBodyGroup(int idx)
+	{
+		return this.iNumBodyGroups > 0 && idx >= this.GetBodyGroupStart() && idx <= this.GetBodyGroupEnd();
+	}
+
+}
+
 methodmap UI
 {
 	public static void Init()
@@ -44,7 +86,7 @@ methodmap UI
 		{
 			return false;
 		}
-		if (selectableModels[client] == null || !selectableModels[client].Length)
+		if (!selectableModels[client] || !selectableModels[client].Length)
 		{
 			if (printError) PrintToChat(client, "[ModelChooser] No models are available.");
 			return false;
@@ -81,21 +123,21 @@ methodmap UI
 		Sounds.StopLast(client, SNDCHAN_BODY);
 		Sounds.StopLast(client, SNDCHAN_AUTO);
 		
-		// center camera pitch
+		// lock the camera in a downward pitch
 		if (mp_forcecamera)
 		{
 			mp_forcecamera.ReplicateToClient(client, "0");
 		}
 		float eyeAngles[3];
 		GetClientEyeAngles(client, eyeAngles);
-		eyeAngles[0] = 0.0;
+		eyeAngles[0] = 25.0;
 		TeleportEntity(client, .angles = eyeAngles);
 
+		UI.UpdateOverlay(client, true);
 		Client_SetObserverTarget(client, 0);
 		Client_SetObserverMode(client, OBS_MODE_DEATHCAM, false);
 		Client_SetDrawViewModel(client, false);
 		FixThirdpersonWeapons(client);
-		UI.UpdateOverlay(client, true);
 		Client_SetHideHud(client, HIDEHUD_HEALTH|HIDEHUD_CROSSHAIR|HIDEHUD_FLASHLIGHT|HIDEHUD_WEAPONSELECTION|HIDEHUD_MISCSTATUS);
 		Client_ScreenFade(client, 100, FFADE_PURGE|FFADE_IN, 0);
 		SetEntityFlags(client, GetEntityFlags(client) | FL_ATCONTROLS);
@@ -107,7 +149,7 @@ methodmap UI
 		}
 		
 		g_hMenuInitTimer[client] = CreateTimer(0.1, Timer_MenuInit1, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
-		UI.HandleSelection(client, true);
+		UI.HandleModelSelection(client, true);
 	}
 
 	public static void Exit(int client, bool silent = false, bool cancel = false)
@@ -120,14 +162,14 @@ methodmap UI
 			mp_forcecamera.ReplicateToClient(client, mp_forcecamera.BoolValue? "1" : "0");
 		}
 		UI.UpdateOverlay(client, false);
+		UI.ClearHud(client);
+		UI.UpdateLock(client, false);
+		Sounds.StopLast(client, SNDCHAN_BODY);
 		Client_SetHideHud(client, 0);
 		Client_ScreenFade(client, 200, FFADE_PURGE|FFADE_IN, 0);
 		SetEntityFlags(client, GetEntityFlags(client) & ~FL_ATCONTROLS);
-		UI.ClearHud(client);
 		SDKUnhook(client, SDKHook_OnTakeDamage, Hook_BlockDamage);
-		Sounds.StopLast(client, SNDCHAN_BODY);
 		SetEntPropFloat(client, Prop_Data, "m_flNextAttack", GetGameTime() + 0.25);
-		UI.UpdateLock(client, false);
 		FixFirstpersonWeapons(client);
 		delete g_hMenuInitTimer[client];
 		
@@ -141,10 +183,20 @@ methodmap UI
 			
 			activeSelection[client] = menuSelection[client];
 			
-			PersistentPreferences prefs; prefs = GetPreferences(client);
+			PersistentPreferences prefs;
+			prefs = GetPreferences(client);
 			prefs.model.Set(client, model.name);
 			prefs.skin.SetInt(client, model.GetSkin(menuSelection[client].skin));
-			prefs.body.SetInt(client, model.GetBody(menuSelection[client].body));
+			
+			PlayerModelBodyGroup bodyGroup;
+			int body;
+			int len = model.BodyGroupCount();
+			for (int i = 0; i < len; i++)
+			{
+				model.GetBodyGroup(i, bodyGroup);
+				CalcBodygroup(bodyGroup.base, bodyGroup.numModels, body, menuSelection[client].subModels[i]);
+			}
+			prefs.body.SetInt(client, body);
 
 			PrintToChat(client, "\x07d9843fModel selected: \x07f5bf42%s", model.name);
 			
@@ -154,25 +206,21 @@ methodmap UI
 		menuSelection[client].Reset();
 	}
 
-	public static void HandleSelection(int client, bool initial = false, bool scrolling = false)
+	public static void HandleModelSelection(int client, bool initial = false, bool autoScrolling = false)
 	{
 		Sounds.StopLast(client, SNDCHAN_BODY);
 
 		PlayerModel model;
 		GetModelFromSelection(client, menuSelection[client], model);
-		
-		menuSelection[client].skinCount = model.skins.Length;
-		menuSelection[client].bodyCount = model.bodyGroups.Length;
 		menuSelection[client].locked = IsModelLocked(model, client);
 		
 		if (!initial)
 		{
-			menuSelection[client].skin = 0;
-			menuSelection[client].body = 0;
+			menuSelection[client].ResetModelOptions();
 			UI.PlayClickSound(client);
 		}
 		
-		if (!scrolling && !menuSelection[client].locked)
+		if (!autoScrolling && !menuSelection[client].locked)
 		{
 			Sounds.PlayRandom(GetSoundPack(model).GetSoundList("view"), client, _, SNDCHAN_BODY);
 		}
@@ -182,28 +230,20 @@ methodmap UI
 		UI.UpdateLock(client, menuSelection[client].locked);
 	}
 
-	public static void HandleSkinSelection(int client)
+	public static void HandleSkinSelection(int client, const PlayerModel model)
 	{
-		if (menuSelection[client].locked)
-			return;
-		
-		PlayerModel model;
-		GetSelectedModel(client, model, true);
 		UI.UpdateHud(client, model);
-		SetEntitySkin(client, model.GetSkin(menuSelection[client].skin));
 		UI.PlayClickSound(client);
+		SetEntitySkin(client, model.GetSkin(menuSelection[client].skin));
 	}
 
-	public static void HandleBodySelection(int client)
+	public static void HandleSubmodelSelection(int client, const PlayerModel model, const PlayerModelBodyGroup bodyGroup, int subModel)
 	{
-		if (menuSelection[client].locked)
-			return;
-		
-		PlayerModel model;
-		GetSelectedModel(client, model, true);
 		UI.UpdateHud(client, model);
-		SetEntityBody(client, model.GetBody(menuSelection[client].body));
 		UI.PlayClickSound(client);
+		int body = GetEntityBody(client);
+		CalcBodygroup(bodyGroup.base, bodyGroup.numModels, body, subModel);
+		SetEntityBody(client, body);
 	}
 
 	public static void PlayClickSound(int client)
@@ -297,56 +337,81 @@ methodmap UI
 		
 		UI.ClearHud(client, true, true);
 		g_bDrawing = true;
+		bool locked = menuSelection[client].locked;
 
-		static char text[128];
+		static ModelOptionsSequenceHelper optionsHelper;
+		optionsHelper.Init(model);
+		
+		// Model select:
+		SetHudTextParamsEx(cvHudText2x.FloatValue, cvHudText2y.FloatValue, 9999999.0, DEFAULT_HUD_COLOR, _, 1, 0.0, initital ? 1.2 : 0.0, 1.0);
+		ShowHudText(client, g_iSecondaryHudChanToggle[client],  "◀ %12d / %-12d ▶",
+			menuSelection[client].index + 1, selectableModels[client].Length);
 
-		bool showBody = menuSelection[client].bodyCount > 1 && !menuSelection[client].locked;
-		bool showSkin = menuSelection[client].skinCount > 1 && !menuSelection[client].locked;
-		text = (!showBody || !showSkin) ? "\n" : "";
+		// Model name and options select:
+		SetHudTextParamsEx(cvHudText1x.FloatValue, cvHudText1y.FloatValue, 60.0,
+			locked ? DEFAULT_HUD_COLOR : model.hudColor, {200, 200, 200, 200}, 1, 0.1, initital ? 1.2 : 0.0, 0.15);
 
-		int color[4];
-		if (menuSelection[client].locked)
+		if (locked)
 		{
-			StrCat(text, sizeof(text), "?");
-			color = DEFAULT_HUD_COLOR;
+			ShowHudText(client, g_iMainHudChanToggle[client], "\n?");
+		}
+		else if (!optionsHelper.GetTotal())
+		{
+			ShowHudText(client, g_iMainHudChanToggle[client], "\n%s", model.name);
 		}
 		else
 		{
-			StrCat(text, sizeof(text), model.name);
-			color = model.hudColor;
-		}
+			char optionTitle[MODELCHOOSER_MAX_NAME];
+			int optionValue, optionCount;
+			if (optionsHelper.IsSkin(menuSelection[client].optionIndex))
+			{
+				optionTitle = "SKIN";
+				optionValue = menuSelection[client].skin + 1;
+				optionCount = model.SkinCount();
+			}
+			else if (optionsHelper.IsBodyGroup(menuSelection[client].optionIndex))
+			{
+				int bodyGroupIndex = optionsHelper.ToBodyGroupIndex(menuSelection[client].optionIndex);
+				PlayerModelBodyGroup bodyGroup; model.GetBodyGroup(bodyGroupIndex, bodyGroup);
+				optionTitle = bodyGroup.name;
+				optionValue = menuSelection[client].subModels[bodyGroupIndex] + 1;
+				optionCount = bodyGroup.numModels;
+			}
+			
+			static char optionBar[256];
+			if (optionsHelper.GetTotal() > 1)
+			{
+				// construct a visual guide for option selection
+				int totalBytes;
+				for (int i = 0; i < optionsHelper.GetTotal(); i++)
+				{
+					int bytes = strcopy(optionBar[totalBytes], sizeof(optionBar)-totalBytes, (i == menuSelection[client].optionIndex) ? "◼" : "◻");
+					if (!bytes) break;
+					totalBytes += bytes;
+				}
+			}
+			else
+			{
+				optionBar = "";
+			}
 
-		if (showBody)
-		{
-			Format(text, sizeof(text), "%s\n↑ %4d / %-4d ↓", text, menuSelection[client].body + 1, menuSelection[client].bodyCount);
+			ShowHudText(client, g_iMainHudChanToggle[client], "%s\n%s\n%s: %3d / %-3d ⇡⇣",
+				model.name, optionBar, optionTitle, optionValue, optionCount);
 		}
-
-		if (showSkin)
-		{
-			Format(text, sizeof(text), "%s\n← %3d / %-3d →", text, menuSelection[client].skin + 1, menuSelection[client].skinCount);
-		}
-		
-		SetHudTextParamsEx(cvHudText1x.FloatValue, cvHudText1y.FloatValue, 60.0, color, {200, 200, 200, 200}, 1, 0.1, initital? 1.2 : 0.0, 0.15);
-		ShowHudText(client, g_iMainHudChanToggle[client], text);
-
-		// Bottom
-		Format(text, sizeof(text), "◀ %12d / %-12d ▶", menuSelection[client].index + 1, selectableModels[client].Length);
-		SetHudTextParamsEx(cvHudText2x.FloatValue, cvHudText2y.FloatValue, 9999999.0, DEFAULT_HUD_COLOR, _, 1, 0.0, initital? 1.2 : 0.0, 1.0);
-		ShowHudText(client, g_iSecondaryHudChanToggle[client], text);
 		
 		g_bDrawing = false;
 	}
 
-	public static void ClearHud(int client, bool top = true, bool bottom = true)
+	public static void ClearHud(int client, bool main = true, bool secondary = true)
 	{
 		g_bDrawing = true;
 		SetHudTextParams(-1.0, -1.0, 0.0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0);
-		if (top)
+		if (main)
 		{
 			ShowHudText(client, g_iMainHudChanToggle[client], " ");
 			g_iMainHudChanToggle[client] = !g_iMainHudChanToggle[client];
 		}
-		if (bottom)
+		if (secondary)
 		{
 			ShowHudText(client, g_iSecondaryHudChanToggle[client], " ");
 			g_iSecondaryHudChanToggle[client] = g_iSecondaryHudChanToggle[client] == 2? 3 : 2;
@@ -367,70 +432,109 @@ methodmap UI
 		g_bControlsHintDisplayed[client] = true;
 	}
 	
-	public static void SelectionThink(int client, int buttons, int oldButtons, bool scrolling)
+	public static void SelectionThink(int client, int buttons, int oldButtons, bool autoScrolling)
 	{
-		if (UI.IsOpening(client))
+		if (UI.IsOpening(client) || !selectableModels[client].Length)
 		{
 			return;
 		}
 
-		if (selectableModels[client].Length > 1)
+		/* Model selection */
+		
+		if (buttons & IN_ATTACK && !(oldButtons & IN_ATTACK))
 		{
-			if (buttons & IN_ATTACK && !(oldButtons & IN_ATTACK))
+			if (--menuSelection[client].index < 0)
 			{
-				if (--menuSelection[client].index < 0)
-				{
-					menuSelection[client].index = selectableModels[client].Length - 1;
-				}
-				UI.HandleSelection(client, false, scrolling);
+				menuSelection[client].index = selectableModels[client].Length - 1;
 			}
-			if (buttons & IN_ATTACK2 && !(oldButtons & IN_ATTACK2))
+			UI.HandleModelSelection(client, false, autoScrolling);
+			return;
+		}
+		if (buttons & IN_ATTACK2 && !(oldButtons & IN_ATTACK2))
+		{
+			if (++menuSelection[client].index >= selectableModels[client].Length)
 			{
-				if (++menuSelection[client].index >= selectableModels[client].Length)
-				{
-					menuSelection[client].index = 0;
-				}
-				UI.HandleSelection(client, false, scrolling);
+				menuSelection[client].index = 0;
 			}
+			UI.HandleModelSelection(client, false, autoScrolling);
+			return;
 		}
 
-		if (menuSelection[client].skinCount > 1)
+		/* Model options */
+
+		static PlayerModel model;
+ 
+		if (menuSelection[client].locked || !GetModelFromSelection(client, menuSelection[client], model))
+		{
+			return;
+		}
+
+		static ModelOptionsSequenceHelper optionsHelper;
+		optionsHelper.Init(model);
+
+		if (optionsHelper.GetTotal() > 1)
 		{
 			if (buttons & IN_MOVELEFT && !(oldButtons & IN_MOVELEFT))
 			{
-				if (--menuSelection[client].skin < 0)
+				if (--menuSelection[client].optionIndex < 0)
 				{
-					menuSelection[client].skin = menuSelection[client].skinCount - 1;
+					menuSelection[client].optionIndex = optionsHelper.GetTotal() - 1;
 				}
-				UI.HandleSkinSelection(client);
+				UI.UpdateHud(client, model);
+				UI.PlayClickSound(client);
+				return;
 			}
 			if (buttons & IN_MOVERIGHT && !(oldButtons & IN_MOVERIGHT))
 			{
-				if (++menuSelection[client].skin >= menuSelection[client].skinCount)
+				if (++menuSelection[client].optionIndex >= optionsHelper.GetTotal())
 				{
-					menuSelection[client].skin = 0;
+					menuSelection[client].optionIndex = 0;
 				}
-				UI.HandleSkinSelection(client);
+				UI.UpdateHud(client, model);
+				UI.PlayClickSound(client);
+				return;
 			}
 		}
-
-		if (menuSelection[client].bodyCount > 1)
+		
+		if (optionsHelper.IsSkin(menuSelection[client].optionIndex))
 		{
 			if (buttons & IN_BACK && !(oldButtons & IN_BACK))
 			{
-				if (--menuSelection[client].body < 0)
+				if (--menuSelection[client].skin < 0)
 				{
-					menuSelection[client].body = menuSelection[client].bodyCount - 1;
+					menuSelection[client].skin = model.SkinCount() - 1;
 				}
-				UI.HandleBodySelection(client);
+				UI.HandleSkinSelection(client, model);
 			}
 			if (buttons & IN_FORWARD && !(oldButtons & IN_FORWARD))
 			{
-				if (++menuSelection[client].body >= menuSelection[client].bodyCount)
+				if (++menuSelection[client].skin >= model.SkinCount())
 				{
-					menuSelection[client].body = 0;
+					menuSelection[client].skin = 0;
 				}
-				UI.HandleBodySelection(client);
+				UI.HandleSkinSelection(client, model);
+			}
+		}
+		else if (optionsHelper.IsBodyGroup(menuSelection[client].optionIndex))
+		{
+			int bodyGroupIndex = optionsHelper.ToBodyGroupIndex(menuSelection[client].optionIndex);
+			PlayerModelBodyGroup bodyGroup; model.GetBodyGroup(bodyGroupIndex, bodyGroup);
+
+			if (buttons & IN_BACK && !(oldButtons & IN_BACK))
+			{
+				if (--menuSelection[client].subModels[bodyGroupIndex] < 0)
+				{
+					menuSelection[client].subModels[bodyGroupIndex] = bodyGroup.numModels - 1;
+				}
+				UI.HandleSubmodelSelection(client, model, bodyGroup, menuSelection[client].subModels[bodyGroupIndex]);
+			}
+			if (buttons & IN_FORWARD && !(oldButtons & IN_FORWARD))
+			{
+				if (++menuSelection[client].subModels[bodyGroupIndex] >= bodyGroup.numModels)
+				{
+					menuSelection[client].subModels[bodyGroupIndex] = 0;
+				}
+				UI.HandleSubmodelSelection(client, model, bodyGroup, menuSelection[client].subModels[bodyGroupIndex]);
 			}
 		}
 	}

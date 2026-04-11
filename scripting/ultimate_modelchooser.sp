@@ -11,7 +11,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION  "3.2"
+#define PLUGIN_VERSION  "4.0"
 
 public Plugin myinfo =
 {
@@ -37,8 +37,8 @@ public Plugin myinfo =
 #define FALLBACK_MODEL "models/error.mdl"
 int DEFAULT_HUD_COLOR[] = {150, 150, 150, 150};
 
-#include <modelchooser/utils>
 #include <modelchooser/structs>
+#include <modelchooser/utils>
 #include <modelchooser/globals>
 #include <modelchooser/natives>
 #include <modelchooser/commands>
@@ -52,7 +52,7 @@ public void OnPluginStart()
 {
 	LoadTranslations("common.phrases");
 
-	modelList = new ModelList();
+	modelList = new PlayerModelList();
 	soundMap = new SoundMap();
 	downloads = new SmartDM_FileSet();
 	persistentPreferences[TEAM_UNASSIGNED].Init(TEAM_UNASSIGNED);
@@ -327,15 +327,17 @@ public MRESReturn Hook_SetModel(int client, DHookParam hParams)
 	{
 		DHookSetParamString(hParams, 1, model.path);
 		SetEntitySkin(client, model.GetSkin(selection.skin));
-		SetEntityBody(client, model.GetBody(selection.body));
+		UpdateSubModels(client, model, selection);
+
 		// Delay needed for Black Mesa
-		CreateTimer(0.1, Timer_UpdateModelAccessories, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+		CreateTimer(0.1, Timer_SetModelPost, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+
 		return MRES_ChangedHandled;
 	}
 	return MRES_Ignored;
 }
 
-void Timer_UpdateModelAccessories(Handle timer, int userid)
+void Timer_SetModelPost(Handle timer, int userid)
 {
 	int client = GetClientOfUserId(userid);
 	if (client)
@@ -346,10 +348,32 @@ void Timer_UpdateModelAccessories(Handle timer, int userid)
 		if (GetModelFromSelection(client, selection, model))
 		{
 			SetEntitySkin(client, model.GetSkin(selection.skin));
-			SetEntityBody(client, model.GetBody(selection.body));
+			UpdateSubModels(client, model, selection);
 			UpdateViewModels(client);
 		}
 	}
+}
+ 
+void UpdateSubModels(int client, const PlayerModel model, const SelectionData selection)
+{
+	int body;
+
+	// transpose gameplay driven bodygroups (e.g. longjump) to new model
+	StringMap submodelsMap = GetEntityBodygroupsMap(client);
+	ApplyStudioBodyGroupsFromMap(StudioHdr(model.path), submodelsMap, body);
+	delete submodelsMap;
+
+	// apply selected submodels
+	int len = model.BodyGroupCount();
+	PlayerModelBodyGroup bodyGroup;
+	for (int i = 0; i < len; i++)
+	{
+		model.GetBodyGroup(i, bodyGroup);
+		CalcBodygroup(bodyGroup.base, bodyGroup.numModels, body, selection.subModels[i]);
+	}
+
+	// set the new body value
+	SetEntityBody(client, body);
 }
 
 void RefreshModel(int client)
@@ -454,9 +478,23 @@ bool SelectModelByName(int client, const char[] modelName, int skin = 0, int bod
 		int clIndex = selectableModels[client].FindValue(index);
 		if (clIndex != -1 && !IsModelLocked(model, client))
 		{
+			activeSelection[client].Reset();
 			activeSelection[client].index = clIndex;
-			activeSelection[client].skin = model.IndexOfSkin(skin);
-			activeSelection[client].body = model.IndexOfBody(body);
+			activeSelection[client].skin = model.FindSkin(skin);
+
+			PlayerModelBodyGroup bodyGroup;
+			int len = model.BodyGroupCount();
+			for (int i = 0; i < len; i++)
+			{
+				model.GetBodyGroup(i, bodyGroup);
+				int subModelIndex = CalcBodygroupSubmodel(bodyGroup.base, bodyGroup.numModels, body);
+				if (subModelIndex < 0 || subModelIndex >= bodyGroup.numModels)
+				{
+					subModelIndex = 0;
+				}
+				activeSelection[client].subModels[i] = subModelIndex;
+			}
+
 			RefreshModel(client);
 			CallModelChanged(client, model);
 			return true;
@@ -497,6 +535,7 @@ bool SelectDefaultModel(int client)
 	
 	if (maxPrioList.Length)
 	{
+		activeSelection[client].Reset();
 		activeSelection[client].index = maxPrioList.Get(Math_GetRandomInt(0, maxPrioList.Length - 1));
 
 		PlayerModel model;

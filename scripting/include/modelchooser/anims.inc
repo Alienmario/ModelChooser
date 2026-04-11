@@ -81,7 +81,7 @@ static int GetCustomSequenceForAnim(int client, PLAYER_ANIM playerAnim, float &p
 			}
 		}
 		
-		PlayerAnimation selectedAnim;
+		PlayerModelAnimation selectedAnim;
 		if (playerAnim == PLAYER_IDLE)
 		{
 			selectedAnim = model.anim_idle;

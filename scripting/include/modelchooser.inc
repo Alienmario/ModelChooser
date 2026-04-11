@@ -68,7 +68,7 @@ native bool ModelChooser_GetProperty(const char[] modelName, const char[] key, c
 #include <clientprefs>
 #include <modelchooser/structs>
 
-native ModelList ModelChooser_GetModelList();
+native PlayerModelList ModelChooser_GetModelList();
 
 native SoundMap ModelChooser_GetSoundMap();
 

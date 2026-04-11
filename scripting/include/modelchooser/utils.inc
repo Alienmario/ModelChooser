@@ -87,6 +87,7 @@ stock void FixThirdpersonWeapons(int client)
 
 /**
  * Attempts to fix clientside prediction errors after exiting thirdperson.
+ * The client (presumably) requests full entity update after missing ticks, fixing the weapon desync.
  */
 stock void FixFirstpersonWeapons(int client)
 {
@@ -102,24 +103,95 @@ stock void Timer_FixFirstpersonWeapons(Handle timer, int weapon)
 	SDKUnhook(weapon, SDKHook_SetTransmit, Hook_TransmitToNonOwnersOnly);
 }
 
-// Copy pasta of "SetBodygroup" from the SDK
-stock void CalcBodygroup(StudioHdr pStudioHdr, int& body, int iGroup, int iValue)
+// Sets a specific bodygroup on a body to specific submodel index, without affecting other bodygroups
+// Based on the SDK's SetBodygroup implementation
+stock void CalcStudioBodygroup(StudioHdr pStudio, int& body, int iGroup, int iValue)
 {
-	if (!pStudioHdr)
+	if (!pStudio.valid)
 		return;
 
-	BodyPart pBodyPart = pStudioHdr.GetBodyPart(iGroup);
+	BodyPart pBodyPart = pStudio.GetBodyPart(iGroup);
 	if (!pBodyPart.valid)
 		return;
 
-	int numModels = pBodyPart.nummodels;
+	CalcBodygroup(pBodyPart.base, pBodyPart.nummodels, body, iValue);
+}
+
+// Sets a specific bodygroup on a body to specific submodel index, without affecting other bodygroups
+// Based on the SDK's SetBodygroup implementation
+stock void CalcBodygroup(int base, int numModels, int& body, int iValue)
+{
 	if (iValue >= numModels)
 		return;
 
-	int base = pBodyPart.base;
 	int iCurrent = (body / base) % numModels;
-
 	body = (body - (iCurrent * base) + (iValue * base));
+}
+
+// Extracts the submodel index from the combined body prop
+// Uses reverse calculation of CalcBodygroup logic
+stock int CalcBodygroupSubmodel(int base, int numModels, int body)
+{
+	return (body / base) % numModels;
+}
+
+stock StringMap GetEntityBodygroupsMap(int entity)
+{
+	return GetStudioBodygroupsMap(StudioHdr.FromEntity(entity), GetEntityBody(entity));
+}
+
+stock StringMap GetStudioBodygroupsMap(StudioHdr pStudio, int body)
+{
+	StringMap pBodygroups = new StringMap();
+	if (!pStudio.valid)
+	{
+		return pBodygroups;
+	}
+	
+	int numBodyParts = pStudio.numbodyparts;
+	char bodyPartName[MODELCHOOSER_MAX_NAME];
+	
+	for (int i = 0; i < numBodyParts; i++)
+	{
+		BodyPart pBodyPart = pStudio.GetBodyPart(i);
+		pBodyPart.GetName(bodyPartName, sizeof(bodyPartName));
+		_modelchooser_normalize(bodyPartName, bodyPartName);
+		
+		int value = CalcBodygroupSubmodel(pBodyPart.base, pBodyPart.nummodels, body);
+		pBodygroups.SetValue(bodyPartName, value);
+	}
+	
+	return pBodygroups;
+}
+
+stock void ApplyEntityBodyGroupsFromMap(int entity, StringMap pBodygroups)
+{
+	StudioHdr pStudio = StudioHdr.FromEntity(entity);
+	int body = GetEntityBody(entity);
+	ApplyStudioBodyGroupsFromMap(pStudio, pBodygroups, body);
+	SetEntityBody(entity, body);
+}
+
+stock void ApplyStudioBodyGroupsFromMap(StudioHdr pStudio, StringMap pBodygroups, int& body)
+{
+	if (!pStudio.valid)
+		return;
+
+	int numBodyParts = pStudio.numbodyparts;
+	char bodyPartName[MODELCHOOSER_MAX_NAME];
+	int value;
+	
+	for (int i = 0; i < numBodyParts; i++)
+	{
+		BodyPart pBodyPart = pStudio.GetBodyPart(i);
+		pBodyPart.GetName(bodyPartName, sizeof(bodyPartName));
+		_modelchooser_normalize(bodyPartName, bodyPartName);
+		
+		if (pBodygroups.GetValue(bodyPartName, value))
+		{
+			CalcBodygroup(pBodyPart.base, pBodyPart.nummodels, body, value);
+		}
+	}
 }
 
 stock void ApplyEntityBodyGroupsFromString(int entity, const char[] str)

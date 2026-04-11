@@ -2,7 +2,7 @@
 #pragma newdecls required
 
 // Complete model list containing entries of PlayerModel
-ModelList modelList;
+PlayerModelList modelList;
 
 // Complete sounds map containing entries of SoundPack, indexed by names
 SoundMap soundMap;
@@ -28,7 +28,7 @@ float nextJumpSound[MAXPLAYERS + 1];
 // Counter for # of checks to pass until client models can be initialized
 int clientInitChecks[MAXPLAYERS + 1];
 
-// Team number cached from changeteam event hook
+// Team number cached from ChangeTeam event hook
 int currentTeam[MAXPLAYERS + 1];
 
 // Downloads fileset

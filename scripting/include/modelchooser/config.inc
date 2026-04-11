@@ -66,8 +66,8 @@ static void ParseModels(KeyValues kv)
 				SmartDM.AddEx(model.path, downloads, true, true);
 
 				StudioHdr studio = StudioHdr(model.path);
-				model.skins = ProcessSkins(studio, ParseDelimitedIntList(kv, "skins"));
-				model.bodyGroups = ProcessBodyGroups(studio, ParseDelimitedIntList(kv, "bodygroups"));
+				model.skins = ProcessSkins(studio, ParseDelimitedIntList(kv, "skins"), ParseDelimitedIntList(kv, "!skins"));
+				model.bodyGroups = ProcessBodyGroups(studio, ParseDelimitedStringList(kv, "bodygroups"), ParseDelimitedStringList(kv, "!bodygroups"));
 
 				kv.GetString("vmbody", model.vmBodyGroups, sizeof(model.vmBodyGroups));
 				TrimString(model.vmBodyGroups);
@@ -165,7 +165,7 @@ static void ParseAnims(KeyValues kv, StudioHdr studiohdr, PlayerModel model)
 	seqNums.Close();
 }
 
-static void ParseAnim(KeyValues kv, PlayerModel model, PlayerAnimation anim, const char[] key, StringMap act2seq, StringMap seqNums)
+static void ParseAnim(KeyValues kv, PlayerModel model, PlayerModelAnimation anim, const char[] key, StringMap act2seq, StringMap seqNums)
 {
 	char szSearchName[MAX_ANIM_NAME];
 
@@ -307,73 +307,57 @@ static void ParseInterval(KeyValues kv, Interval interval, const char[] key, flo
 	interval.min = interval.max = StringToFloat(val);
 }
 
-static ArrayList ProcessSkins(StudioHdr studio, ArrayList list)
+static ArrayList ProcessSkins(StudioHdr studio, ArrayList allowList, ArrayList blockList)
 {
+	ArrayList processedList = new ArrayList();
 	int numSkins = studio.numskinfamilies;
-
-	if (list)
+	
+	for (int i = 0; i < numSkins; i++)
 	{
-		for (int i = list.Length - 1; i >= 0; i--)
+		if ((!allowList || allowList.FindValue(i) != -1) && (!blockList || blockList.FindValue(i) == -1))
 		{
-			int skin = list.Get(i);
-			if (skin < 0 || skin >= numSkins)
-			{
-				list.Erase(i);
-			}
-		}
-	}
-	else
-	{
-		list = new ArrayList();
-		for (int i = 0; i < numSkins; i++)
-		{
-			list.Push(i);
+			processedList.Push(i);
 		}
 	}
 
-	if (!list.Length)
+	if (!processedList.Length)
 	{
-		list.Push(0);
+		processedList.Push(0);
 	}
 	
-	return list;
+	delete allowList;
+	delete blockList;
+	return processedList;
 }
 
-static ArrayList ProcessBodyGroups(StudioHdr studio, ArrayList list)
+static ArrayList ProcessBodyGroups(StudioHdr studio, ArrayList allowList, ArrayList blockList)
 {
-	int numBodyGroups;
-	for (int i = studio.numbodyparts - 1; i >= 0; i--)
+	ArrayList processedList = new ArrayList(sizeof(PlayerModelBodyGroup));
+	PlayerModelBodyGroup info;
+
+	int numBodyParts = studio.numbodyparts;
+	for (int i = 0; i < numBodyParts; i++)
 	{
 		BodyPart pBodyPart = studio.GetBodyPart(i);
-		numBodyGroups += pBodyPart.nummodels;
-	}
-
-	if (list)
-	{
-		for (int i = list.Length - 1; i >= 0; i--)
+		info.numModels = pBodyPart.nummodels;
+		if (info.numModels > 1)
 		{
-			int bodyGroup = list.Get(i);
-			if (bodyGroup < 0 || bodyGroup >= numBodyGroups)
+			pBodyPart.GetName(info.name, sizeof(info.name));
+			_modelchooser_normalize(info.name, info.name);
+
+			if ((!allowList || allowList.FindString(info.name) != -1)
+				&& (!blockList || blockList.FindString(info.name) == -1))
 			{
-				list.Erase(i);
+				info.base = pBodyPart.base;
+				info.group = i;
+				processedList.PushArray(info);
 			}
 		}
 	}
-	else
-	{
-		list = new ArrayList();
-		for (int i = 0; i < numBodyGroups; i++)
-		{
-			list.Push(i);
-		}
-	}
 
-	if (!list.Length)
-	{
-		list.Push(0);
-	}
-
-	return list;
+	delete allowList;
+	delete blockList;
+	return processedList;
 }
 
 static ArrayList ParseDelimitedIntList(KeyValues kv, const char[] key)
@@ -405,6 +389,44 @@ static ArrayList ParseDelimitedIntList(KeyValues kv, const char[] key)
 		if (buffer[0] != EOS)
 		{
 			list.Push(StringToInt(buffer));
+		}
+	}
+
+	kv.GoBack();
+	return list;
+}
+
+static ArrayList ParseDelimitedStringList(KeyValues kv, const char[] key)
+{
+	if (!kv.JumpToKey(key))
+		return null;
+	
+	char value[2048], buffer[MODELCHOOSER_MAX_NAME];
+	kv.GetString(NULL_STRING, value, sizeof(value));
+	
+	ArrayList list = new ArrayList(MODELCHOOSER_MAX_NAME);
+	
+	for (int i, n;;)
+	{
+		n = SplitString(value[i], ";", buffer, sizeof(buffer));
+		if (n == -1)
+		{
+			// remainder
+			strcopy(buffer, sizeof(buffer), value[i]);
+			TrimString(buffer);
+			if (buffer[0] != EOS)
+			{
+				_modelchooser_normalize(buffer, buffer);
+				list.PushString(buffer);
+			}
+			break;
+		}
+		i += n;
+		TrimString(buffer);
+		if (buffer[0] != EOS)
+		{
+			_modelchooser_normalize(buffer, buffer);
+			list.PushString(buffer);
 		}
 	}
 

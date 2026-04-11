@@ -41,7 +41,7 @@ public void ModelChooser_OnConfigLoaded()
 {
 	PrintToServer("Model config loaded");
 
-	ModelList modelList = ModelChooser_GetModelList();
+	PlayerModelList modelList = ModelChooser_GetModelList();
 	PlayerModel model;
 
 	int size = modelList.Length;
