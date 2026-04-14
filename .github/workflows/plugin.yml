@@ -15,23 +15,23 @@ jobs:
               
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         
       - name: Checkout smartdm
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: Alienmario/smartdm-redux
           path: deps/smartdm
 
       - name: Checkout smlib
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: bcserv/smlib
           ref: transitional_syntax
           path: deps/smlib
 
       - name: Checkout StudioHdr
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: Alienmario/StudioHdr
           path: deps/StudioHdr
