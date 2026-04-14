@@ -252,7 +252,7 @@ stock void ApplyEntityBodyGroupsFromString(int entity, const char[] str)
 		}
 
 		if (bodyPartIndex != -1)
-			CalcBodygroup(pStudio, body, bodyPartIndex, subModelIndex);
+			CalcStudioBodygroup(pStudio, body, bodyPartIndex, subModelIndex);
 		
 		if (n == -1)
 		{
