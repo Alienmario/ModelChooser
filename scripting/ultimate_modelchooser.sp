@@ -7,6 +7,7 @@
 #include <smlib>
 #include <studio_hdr>
 #include <smartdm_redux>
+#include <filenetwork>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -55,6 +56,7 @@ public void OnPluginStart()
 	modelList = new PlayerModelList();
 	soundMap = new SoundMap();
 	downloads = new SmartDM_FileSet();
+	coreDownloads = new SmartDM_FileSet();
 	persistentPreferences[TEAM_UNASSIGNED].Init(TEAM_UNASSIGNED);
 	
 	fwdOnConfigLoaded = new GlobalForward("ModelChooser_OnConfigLoaded", ET_Ignore, Param_Cell, Param_String);
@@ -71,6 +73,7 @@ public void OnPluginStart()
 	cvHudText1y = CreateConVar("modelchooser_hudtext_y", "0.01", "Hudtext 1 Y coordinate, from 0 (top) to 1 (bottom), -1 is the center");
 	cvHudText2x = CreateConVar("modelchooser_hudtext2_x", "-1", "Hudtext 2 X coordinate, from 0 (left) to 1 (right), -1 is the center");
 	cvHudText2y = CreateConVar("modelchooser_hudtext2_y", "0.95", "Hudtext 2 Y coordinate, from 0 (top) to 1 (bottom), -1 is the center");
+	cvLateDownloads = CreateConVar("modelchooser_late_downloads", "0", "Whether to send content downloads (models, sounds) to clients via File-Network instead of the classic download table. Requires the File-Network plugin to be loaded; falls back to standard downloads if it is not available. Core plugin downloads (lock model, overlay, menu sound) are always added to the download table.", _, true, 0.0, true, 1.0);
 	mp_forcecamera = FindConVar("mp_forcecamera");
 
 	cvTeamBased.AddChangeHook(Hook_TeamBasedCvarChanged);
@@ -95,6 +98,11 @@ public void OnPluginStart()
 	gamedata.Close();
 }
 
+public void OnAllPluginsLoaded()
+{
+	fileNetAvailable = GetFeatureStatus(FeatureType_Native, "FileNet_SendFile") == FeatureStatus_Available;
+}
+
 public void OnConfigsExecuted()
 {
 	static bool init;
@@ -112,26 +120,33 @@ public void OnConfigsExecuted()
 		modelList.Precache();
 	}
 	
+	coreDownloads.Clear();
+	
 	char file[PLATFORM_MAX_PATH];
 	
 	cvLockModel.GetString(file, sizeof(file));
-	SmartDM.AddEx(file, downloads);
+	SmartDM.AddEx(file, coreDownloads);
 
 	cvOverlay.GetString(file, sizeof(file));
 	if (!StrEqual(file, "") && !StrEqual(file, "0"))
 	{
 		Format(file, sizeof(file), "materials/%s.vmt", file);
-		SmartDM.AddEx(file, downloads);
+		SmartDM.AddEx(file, coreDownloads);
 	}
 
 	cvMenuSnd.GetString(file, sizeof(file));
 	if (!StrEqual(file, ""))
 	{
 		Format(file, sizeof(file), "sound/%s", file);
-		SmartDM.AddEx(file, downloads, true);
+		SmartDM.AddEx(file, coreDownloads, true);
 	}
 
-	downloads.AddToDownloadsTable();
+	coreDownloads.AddToDownloadsTable();
+
+	if (!cvLateDownloads.BoolValue)
+	{
+		downloads.AddToDownloadsTable();
+	}
 
 	PrecacheModel(FALLBACK_MODEL, true);
 	
@@ -166,6 +181,19 @@ public void OnClientPutInServer(int client)
 		DHookEntity(hkSetModel, false, client, _, Hook_SetModel);
 		Anims.PlayerInit(client);
 		Sounds.PlayerInit(client);
+
+		if (cvLateDownloads.BoolValue && fileNetAvailable)
+		{
+			StringMapSnapshot snapshot = downloads.Snapshot();
+			int count = snapshot.Length;
+			char path[PLATFORM_MAX_PATH];
+			for (int i = 0; i < count; i++)
+			{
+				snapshot.GetKey(i, path, sizeof(path));
+				FileNet_SendFile(client, path);
+			}
+			snapshot.Close();
+		}
 
 		if (!--clientInitChecks[client])
 			InitClientModels(client);

@@ -31,8 +31,11 @@ int clientInitChecks[MAXPLAYERS + 1];
 // Team number cached from ChangeTeam event hook
 int currentTeam[MAXPLAYERS + 1];
 
-// Downloads fileset
+// Downloads fileset for content (models, sounds, config downloads)
 SmartDM_FileSet downloads;
+
+// Downloads fileset for core plugin files (configured via convars)
+SmartDM_FileSet coreDownloads;
 
 // Hooks
 DynamicHook hkSetModel;
@@ -56,4 +59,8 @@ ConVar cvHudText1x;
 ConVar cvHudText1y;
 ConVar cvHudText2x;
 ConVar cvHudText2y;
+ConVar cvLateDownloads;
 ConVar mp_forcecamera;
+
+// Cached availability of the File-Network plugin
+bool fileNetAvailable;

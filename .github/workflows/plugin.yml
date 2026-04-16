@@ -36,11 +36,18 @@ jobs:
           repository: Alienmario/StudioHdr
           path: deps/StudioHdr
 
+      - name: Checkout File-Network
+        uses: actions/checkout@v6
+        with:
+          repository: Batfoxkid/File-Network
+          path: deps/filenetwork
+
       - name: Merge deps
         run: |
           cp -R deps/smartdm/* .
           cp -R deps/smlib/scripting/include/* scripting/include
           cp -R deps/StudioHdr/* .
+          cp -R deps/filenetwork/scripting/include/* scripting/include
 
       - name: Setup sourcemod compiler
         id: setup-sp
