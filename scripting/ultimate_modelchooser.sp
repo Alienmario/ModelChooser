@@ -143,7 +143,7 @@ public void OnConfigsExecuted()
 
 	coreDownloads.AddToDownloadsTable();
 
-	if (!cvLateDownloads.BoolValue)
+	if (!cvLateDownloads.BoolValue || !fileNetAvailable)
 	{
 		downloads.AddToDownloadsTable();
 	}
