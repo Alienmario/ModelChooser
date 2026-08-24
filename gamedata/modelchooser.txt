@@ -60,13 +60,13 @@
 			}
 			"CBasePlayer::DeathSound" // CBasePlayer::DeathSound(CTakeDamageInfo const&)
 			{
-				"windows"	"368"
-				"linux"		"369"
+				"windows"	"369"
+				"linux"		"370"
 			}
 			"CBasePlayer::SetAnimation" // CBasePlayer::SetAnimation(PLAYER_ANIM)
 			{
-				"windows"	"371"
-				"linux"		"372"
+				"windows"	"372"
+				"linux"		"373"
 			}
 		}
 		"Signatures"
